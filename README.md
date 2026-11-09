@@ -1,6 +1,6 @@
 # Cocos Challenge Backend
 
-API REST en Node.js, TypeScript, Express y PostgreSQL. El [contrato](docs/contract.md) describe las rutas de negocio y sus reglas contables. La base del proyecto expone `GET /health` para comprobar el acceso a PostgreSQL.
+API REST en Node.js, TypeScript, Express y PostgreSQL. Están disponibles el envío y la cancelación de órdenes. El [contrato](docs/contract.md) describe sus formatos y reglas contables. `GET /health` comprueba el acceso a PostgreSQL.
 
 ## Arranque local
 
@@ -42,5 +42,7 @@ npm run check
 ```
 
 El comando verifica formato, lint y tipos, compila y ejecuta los tests. GitHub Actions ejecuta el mismo comando con un servicio PostgreSQL dedicado. Los tests pueden correr con el contenedor recién iniciado, sin ejecutar `db:demo`. Cada base de test recibe el esquema y `test/fixtures.sql`, y se elimina al finalizar. `npm run format` aplica el formato y `npm test` corre solo las pruebas.
+
+Las pruebas de órdenes cargan su propio historial, hacen solicitudes HTTP y verifican las filas persistidas. También fuerzan el solapamiento de solicitudes con un bloqueo real en PostgreSQL y simulan una falla al confirmar la transacción.
 
 Para volver a una demo vacía, detené la API y ejecutá `docker stop cocos-challenge-postgres` (o `container stop cocos-challenge-postgres`). El contenedor fue creado con `--rm` y sus datos son descartables. Repetí el comando de arranque de PostgreSQL y luego `npm run db:demo`.

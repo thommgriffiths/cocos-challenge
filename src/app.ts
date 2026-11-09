@@ -1,5 +1,7 @@
 import express from "express";
 import type { Pool } from "pg";
+import { sendHttpError } from "./http-error.ts";
+import { ordersRouter } from "./orders/routes.ts";
 
 export function createApp(pool: Pool) {
   const app = express();
@@ -16,6 +18,9 @@ export function createApp(pool: Pool) {
       });
     }
   });
+
+  app.use(ordersRouter(pool));
+  app.use(sendHttpError);
 
   return app;
 }
