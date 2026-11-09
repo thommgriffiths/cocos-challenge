@@ -1,7 +1,6 @@
 import { invalidRequest } from "../errors.ts";
+import { positiveInt } from "../http-input.ts";
 import { toCents } from "../money.ts";
-
-export const maxSize = 2_147_483_647;
 
 export type OrderInput = {
   instrumentId: number;
@@ -9,25 +8,6 @@ export type OrderInput = {
   pricing: { type: "MARKET" } | { type: "LIMIT"; cents: bigint };
   quantity: { size: number } | { amountCents: bigint };
 };
-
-function positiveInt(value: unknown, field: string): number {
-  if (
-    typeof value !== "number" ||
-    !Number.isInteger(value) ||
-    value < 1 ||
-    value > maxSize
-  ) {
-    throw invalidRequest(`${field} debe ser un entero entre 1 y ${maxSize}.`);
-  }
-  return value;
-}
-
-export function parsePathId(value: string, field: string) {
-  if (!/^\d{1,10}$/.test(value)) {
-    throw invalidRequest(`${field} debe ser un id decimal válido.`);
-  }
-  return positiveInt(Number(value), field);
-}
 
 function positiveMoney(value: unknown, field: string, maxDigits: number) {
   const decimal = new RegExp(`^\\d{1,${maxDigits}}(?:\\.\\d{1,2})?$`);

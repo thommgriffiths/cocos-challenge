@@ -1,6 +1,6 @@
 # Cocos Challenge Backend
 
-API REST en Node.js, TypeScript, Express y PostgreSQL. Están disponibles el envío y la cancelación de órdenes. El [contrato](docs/contract.md) describe sus formatos y reglas contables. `GET /health` comprueba el acceso a PostgreSQL.
+API REST en Node.js, TypeScript, Express y PostgreSQL. Están disponibles el portfolio, el envío y la cancelación de órdenes. El [contrato](docs/contract.md) describe sus formatos y reglas contables. `GET /health` comprueba el acceso a PostgreSQL.
 
 ## Arranque local
 

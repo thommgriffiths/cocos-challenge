@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from "pg";
 import { AppError } from "../errors.ts";
+import { withTransaction } from "../transaction.ts";
 
 async function lockAccount(client: PoolClient, userId: number) {
   await client.query("SET LOCAL lock_timeout = '5s'");
@@ -23,28 +24,14 @@ async function lockAccount(client: PoolClient, userId: number) {
   await client.query("SET LOCAL lock_timeout = 0");
 }
 
-export async function withLockedAccount<T>(
+export function withLockedAccount<T>(
   pool: Pool,
   userId: number,
   run: (client: PoolClient) => Promise<T>,
 ) {
-  const client = await pool.connect();
-  let discard = false;
-  try {
-    await client.query("BEGIN ISOLATION LEVEL READ COMMITTED");
+  return withTransaction(pool, "READ COMMITTED", async (client) => {
     // Availability is read in a later statement with a fresh snapshot after waiting.
     await lockAccount(client, userId);
-    const result = await run(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    try {
-      await client.query("ROLLBACK");
-    } catch {
-      discard = true;
-    }
-    throw error;
-  } finally {
-    client.release(discard);
-  }
+    return run(client);
+  });
 }

@@ -1,6 +1,7 @@
 import express from "express";
 import type { Pool } from "pg";
-import { parseOrderInput, parsePathId } from "./input.ts";
+import { parsePathId } from "../http-input.ts";
+import { parseOrderInput } from "./input.ts";
 import { cancelOrder, submitOrder } from "./service.ts";
 
 export function ordersRouter(pool: Pool) {

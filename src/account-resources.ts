@@ -11,7 +11,11 @@ type ResourceRow = {
   reserved_shares: string;
 };
 
-export async function readAccountResources(client: PoolClient, userId: number) {
+export async function readAccountResources(
+  client: PoolClient,
+  userId: number,
+  { requireTradeDates = false } = {},
+) {
   const { rows } = await client.query<ResourceRow>(
     `WITH movements AS (
        SELECT o.instrumentid, o.status, o.side, o.size::numeric AS size, o.price,
@@ -20,6 +24,7 @@ export async function readAccountResources(client: PoolClient, userId: number) {
                   THEN i.ticker = 'ARS' AND i.type = 'MONEDA'
                 WHEN o.status = 'FILLED' AND o.side IN ('BUY', 'SELL')
                   THEN ${tradableInstrument} AND o.price > 0 AND o.price < 'Infinity'::numeric
+                       AND (NOT $2::boolean OR isfinite(o.datetime))
                 WHEN o.status = 'NEW' AND o.side IN ('BUY', 'SELL')
                   THEN ${tradableInstrument} AND o.type = 'LIMIT'
                        AND o.price > 0 AND o.price < 'Infinity'::numeric
@@ -47,7 +52,7 @@ export async function readAccountResources(client: PoolClient, userId: number) {
               THEN size ELSE 0 END)::text AS reserved_shares
      FROM movements
      GROUP BY instrumentid`,
-    [userId],
+    [userId, requireTradeDates],
   );
 
   let cashCents = 0n;

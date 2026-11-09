@@ -1,0 +1,56 @@
+INSERT INTO users (accountNumber) VALUES ('BOOK'), ('NOQUOTE'), ('EMPTY'), ('BATCH'), ('OVERDRAWN');
+
+INSERT INTO instruments (ticker, name, type) VALUES
+  ('ARS', 'Pesos', 'MONEDA'),
+  ('ALFA', 'Alfa', 'ACCIONES'),
+  ('REOPEN', 'Reapertura', 'ACCIONES'),
+  ('NEG', 'Posición negativa', 'ACCIONES'),
+  ('RECOVER', 'Recuperación', 'ACCIONES'),
+  ('CLOSED', 'Posición cerrada', 'ACCIONES'),
+  ('STALE', 'Último cierre inválido', 'ACCIONES'),
+  ('BATCH', 'Historial por lotes', 'ACCIONES'),
+  ('ROUND', 'Redondeo', 'ACCIONES'),
+  (NULL, 'Sin ticker', 'ACCIONES'),
+  ('NOQUOTE', 'Sin cotización', 'ACCIONES');
+
+INSERT INTO marketdata (instrumentId, date, close, previousClose) VALUES
+  (2, '2023-07-13', 10, 10),
+  (2, '2023-07-14', 179, 150),
+  (2, '2023-07-14', 180, 150),
+  (2, NULL, 999, 150),
+  (3, '2023-07-14', 90, 0),
+  (4, '2023-07-14', 30, 25),
+  (5, '2023-07-14', 30, 20),
+  (7, '2023-07-13', 15, 10),
+  (7, '2023-07-14', 'NaN', 15),
+  (8, '2023-07-14', 100, 100),
+  (9, '2023-07-14', 197.99, 200),
+  (10, '2023-07-14', 15, 'NaN');
+
+INSERT INTO orders (userId, instrumentId, size, price, side, type, status, datetime) VALUES
+  (1, 1, 100, 2, 'CASH_IN', 'MARKET', 'FILLED', NULL),
+  (2, 1, 10000, 1, 'CASH_IN', 'MARKET', 'FILLED', NULL),
+  (2, 2, 10, 100, 'BUY', 'MARKET', 'FILLED', '2023-07-13 10:00:00'),
+  (2, 2, 10, 120, 'SELL', 'MARKET', 'FILLED', '2023-07-13 11:00:00'),
+  (2, 2, 10, 200, 'BUY', 'LIMIT', 'FILLED', '2023-07-13 09:00:00'),
+  (2, 3, 2, 100, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (2, 3, 2, 120, 'SELL', 'MARKET', 'FILLED', '2023-07-13 10:00:00'),
+  (2, 3, 3, 60, 'BUY', 'MARKET', 'FILLED', '2023-07-13 11:00:00'),
+  (2, 4, 2, 20, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (2, 4, 5, 25, 'SELL', 'MARKET', 'FILLED', '2023-07-13 10:00:00'),
+  (2, 5, 5, 20, 'SELL', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (2, 5, 7, 25, 'BUY', 'MARKET', 'FILLED', '2023-07-13 10:00:00'),
+  (2, 6, 1, 50, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (2, 6, 1, 70, 'SELL', 'MARKET', 'FILLED', '2023-07-13 10:00:00'),
+  (2, 2, 1, 200, 'BUY', 'LIMIT', 'NEW', NULL),
+  (2, 3, 1, 100, 'SELL', 'LIMIT', 'NEW', NULL),
+  (2, NULL, NULL, NULL, NULL, NULL, 'CANCELLED', NULL),
+  (2, NULL, NULL, NULL, NULL, NULL, 'REJECTED', NULL),
+  (3, 1, 1000, 1, 'CASH_IN', 'MARKET', 'FILLED', NULL),
+  (3, 7, 2, 10, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (3, 11, 3, 5, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (3, 10, 1, 10, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (5, 9, 1, 200, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (6, 1, 10, 1, 'CASH_IN', 'MARKET', 'FILLED', NULL),
+  (6, 2, 1, 20, 'BUY', 'MARKET', 'FILLED', '2023-07-13 09:00:00'),
+  (6, 2, 1, 10, 'BUY', 'LIMIT', 'NEW', NULL);

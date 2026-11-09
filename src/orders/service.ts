@@ -2,9 +2,11 @@ import type { Pool, PoolClient } from "pg";
 import { readAccountResources } from "../account-resources.ts";
 import { tradableInstrument } from "../catalog.ts";
 import { AppError, invalidRequest } from "../errors.ts";
+import { maxInt32 } from "../http-input.ts";
 import { formatCents } from "../money.ts";
+import { readLatestQuotes } from "../quotes.ts";
 import { withLockedAccount } from "./account-transaction.ts";
-import { maxSize, type OrderInput } from "./input.ts";
+import type { OrderInput } from "./input.ts";
 
 async function applicablePrice(client: PoolClient, input: OrderInput) {
   const instrument = await client.query<{ tradable: boolean | null }>(
@@ -25,21 +27,14 @@ async function applicablePrice(client: PoolClient, input: OrderInput) {
     return input.pricing.cents;
   }
 
-  const quote = await client.query<{ cents: string | null }>(
-    `SELECT CASE WHEN isfinite(date) AND close > 0 AND close < 'Infinity'::numeric
-                 THEN (close * 100)::bigint::text END AS cents
-     FROM marketdata WHERE instrumentid = $1
-     ORDER BY date DESC NULLS LAST, id DESC LIMIT 1`,
-    [input.instrumentId],
-  );
-  const cents = quote.rows[0]?.cents;
-  if (!cents) {
+  const [quote] = await readLatestQuotes(client, [input.instrumentId]);
+  if (!quote || quote.closeCents === null) {
     throw new AppError(
       "QUOTE_UNAVAILABLE",
       "El instrumento no tiene un cierre válido.",
     );
   }
-  return BigInt(cents);
+  return quote.closeCents;
 }
 
 function orderSize(quantity: OrderInput["quantity"], priceCents: bigint) {
@@ -47,7 +42,7 @@ function orderSize(quantity: OrderInput["quantity"], priceCents: bigint) {
     return quantity.size;
   }
   const size = quantity.amountCents / priceCents;
-  if (size < 1n || size > BigInt(maxSize)) {
+  if (size < 1n || size > BigInt(maxInt32)) {
     throw invalidRequest(
       "El monto produce una cantidad de acciones fuera del rango permitido.",
     );
