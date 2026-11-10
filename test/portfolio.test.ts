@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Pool } from "pg";
 import { withTestDatabase } from "./database.ts";
 import { withTestApi } from "./http.ts";
+import { assertDocumentedResponse } from "./openapi.ts";
 
 const fixtures = await readFile(
   new URL("./portfolio-fixtures.sql", import.meta.url),
@@ -97,7 +98,9 @@ test("values executed positions in chronological order and subtracts only cash r
 
 test("an absent or invalid latest close preserves quantities and makes total value unknown", async () => {
   await withPortfolioApi(async (_pool, baseUrl) => {
-    assert.deepEqual(await getPortfolio(baseUrl, 3), {
+    const reply = await getPortfolio(baseUrl, 3);
+    assertDocumentedResponse("get", "/users/{userId}/portfolio", reply);
+    assert.deepEqual(reply, {
       status: 200,
       body: {
         userId: 3,

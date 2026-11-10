@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { withTestDatabase } from "./database.ts";
 import { withTestApi } from "./http.ts";
+import { assertDocumentedResponse } from "./openapi.ts";
 
 async function withCatalog(run: (baseUrl: string) => Promise<void>) {
   await withTestDatabase(async (pool) => {
@@ -49,7 +50,9 @@ function itemIds(reply: Awaited<ReturnType<typeof get>>) {
 
 test("searches ticker and name case-insensitively and combines filters with AND", async () => {
   await withCatalog(async (baseUrl) => {
-    assert.deepEqual(await get(baseUrl, { ticker: "  aMp  " }), {
+    const reply = await get(baseUrl, { ticker: "  aMp  " });
+    assertDocumentedResponse("get", "/instruments", reply);
+    assert.deepEqual(reply, {
       status: 200,
       body: {
         items: [

@@ -1,0 +1,1219 @@
+{
+  "openapi": "3.1.2",
+  "info": {
+    "title": "Cocos Challenge Backend",
+    "version": "0.1.0",
+    "description": "API local de evaluación en ARS. Los ejemplos de escritura parten de la demo recién cargada y son independientes. Un envío que devuelve 201 crea una fila, incluso con estado REJECTED. La cancelación cambia el estado de una orden y libera su reserva."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Salud"
+    },
+    {
+      "name": "Instrumentos"
+    },
+    {
+      "name": "Portfolio"
+    },
+    {
+      "name": "Órdenes"
+    }
+  ],
+  "paths": {
+    "/health": {
+      "get": {
+        "operationId": "getHealth",
+        "tags": ["Salud"],
+        "summary": "Comprobar disponibilidad",
+        "description": "Comprueba que la aplicación pueda consultar PostgreSQL.",
+        "responses": {
+          "200": {
+            "description": "PostgreSQL responde.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "const": "ok"
+                    }
+                  },
+                  "required": ["status"],
+                  "additionalProperties": false
+                },
+                "examples": {
+                  "ready": {
+                    "value": {
+                      "status": "ok"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "PostgreSQL no está disponible.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "DATABASE_UNAVAILABLE"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "DATABASE_UNAVAILABLE": {
+                    "value": {
+                      "code": "DATABASE_UNAVAILABLE",
+                      "message": "PostgreSQL no está disponible."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/instruments": {
+      "get": {
+        "operationId": "searchInstruments",
+        "tags": ["Instrumentos"],
+        "summary": "Buscar instrumentos",
+        "description": "Enviá al menos uno entre ticker y name. La coincidencia es parcial, literal y no distingue mayúsculas. Se conservan los acentos. Al combinar filtros se aplica AND. Cada filtro admite de 1 a 100 caracteres una vez quitados los espacios de los extremos. Los parámetros repetidos se rechazan. El catálogo incluye instrumentos con tipo informado distinto de MONEDA aunque carezcan de cotización. El orden es por ticker ascendente, con nulos al final, e id ascendente como desempate.",
+        "parameters": [
+          {
+            "name": "ticker",
+            "in": "query",
+            "description": "Subcadena literal del ticker. Enviá ticker, name o ambos. Omití el filtro si no lo vas a usar.",
+            "schema": {
+              "$ref": "#/components/schemas/SearchTerm"
+            },
+            "example": "pamp"
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "description": "Subcadena literal del nombre. Si además enviás ticker, ambos filtros deben coincidir. Omití el filtro si no lo vas a usar.",
+            "schema": {
+              "$ref": "#/components/schemas/SearchTerm"
+            },
+            "example": "holding"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Tamaño máximo de la página.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "description": "Cantidad de coincidencias que se omiten.",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 100000,
+              "default": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de coincidencias, posiblemente vacía.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstrumentPage"
+                },
+                "examples": {
+                  "pamp": {
+                    "summary": "Coincidencia para PAMP",
+                    "value": {
+                      "items": [
+                        {
+                          "id": 47,
+                          "ticker": "PAMP",
+                          "name": "Pampa Holding S.A.",
+                          "type": "ACCIONES"
+                        }
+                      ],
+                      "limit": 20,
+                      "offset": 0
+                    }
+                  },
+                  "empty": {
+                    "summary": "Sin coincidencias",
+                    "value": {
+                      "items": [],
+                      "limit": 20,
+                      "offset": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Falta un filtro o hay un parámetro inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "INVALID_REQUEST"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "INVALID_REQUEST": {
+                    "value": {
+                      "code": "INVALID_REQUEST",
+                      "message": "Enviá al menos uno de los filtros ticker o name."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          }
+        }
+      }
+    },
+    "/users/{userId}/portfolio": {
+      "get": {
+        "operationId": "getPortfolio",
+        "tags": ["Portfolio"],
+        "summary": "Consultar el portfolio",
+        "description": "La caja ejecutada y las posiciones abiertas se derivan de las órdenes ejecutadas. El disponible resta las reservas de compra. El patrimonio suma la caja ejecutada y el valor firmado de las posiciones, sin descontar reservas. Los valores monetarios están en ARS. Las posiciones se ordenan por ticker e id con los tickers nulos al final.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Estado de la cuenta y sus posiciones abiertas.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portfolio"
+                },
+                "examples": {
+                  "demo": {
+                    "summary": "Cuenta 1 de la demo inicial",
+                    "value": {
+                      "userId": 1,
+                      "cash": "753000.00",
+                      "availableCash": "627500.00",
+                      "totalValue": "889756.00",
+                      "positions": [
+                        {
+                          "instrumentId": 31,
+                          "ticker": "BMA",
+                          "quantity": -10,
+                          "marketValue": "-15028.00",
+                          "positionReturnPct": null,
+                          "dailyReturnPct": "-1.15",
+                          "historicalNegative": true
+                        },
+                        {
+                          "instrumentId": 54,
+                          "ticker": "METR",
+                          "quantity": 500,
+                          "marketValue": "114750.00",
+                          "positionReturnPct": "-8.20",
+                          "dailyReturnPct": "-1.08",
+                          "historicalNegative": false
+                        },
+                        {
+                          "instrumentId": 47,
+                          "ticker": "PAMP",
+                          "quantity": 40,
+                          "marketValue": "37034.00",
+                          "positionReturnPct": "-0.45",
+                          "dailyReturnPct": "0.44",
+                          "historicalNegative": false
+                        }
+                      ]
+                    }
+                  },
+                  "empty": {
+                    "summary": "Cuenta sin movimientos",
+                    "value": {
+                      "userId": 2,
+                      "cash": "0.00",
+                      "availableCash": "0.00",
+                      "totalValue": "0.00",
+                      "positions": []
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador de cuenta inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "INVALID_REQUEST"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "INVALID_REQUEST": {
+                    "value": {
+                      "code": "INVALID_REQUEST",
+                      "message": "userId debe ser un id decimal válido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "La cuenta no existe.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "USER_NOT_FOUND"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "USER_NOT_FOUND": {
+                    "value": {
+                      "code": "USER_NOT_FOUND",
+                      "message": "La cuenta no existe."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Falló el cálculo o la lectura del portfolio.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": ["DATA_INTEGRITY", "INTERNAL_ERROR"]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "DATA_INTEGRITY": {
+                    "value": {
+                      "code": "DATA_INTEGRITY",
+                      "message": "No se pudo determinar el costo de la posición."
+                    }
+                  },
+                  "INTERNAL_ERROR": {
+                    "value": {
+                      "code": "INTERNAL_ERROR",
+                      "message": "No se pudo completar la solicitud."
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{userId}/orders": {
+      "post": {
+        "operationId": "submitOrder",
+        "tags": ["Órdenes"],
+        "summary": "Enviar una orden",
+        "description": "Crea una orden de compra o venta. MARKET usa el cierre de la cotización más reciente e ignora price. Si esa cotización carece de cierre válido, devuelve 422. LIMIT aplica el precio indicado y queda pendiente cuando hay recursos. Con amount se toma la cantidad entera máxima al precio aplicable. Es un tope de gasto en BUY y de valor bruto en SELL. Se controlan los recursos disponibles después de reservas. Cada envío válido crea una fila, incluso REJECTED por recursos insuficientes.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderInput"
+              },
+              "examples": {
+                "marketBySize": {
+                  "summary": "MARKET por cantidad",
+                  "value": {
+                    "instrumentId": 47,
+                    "side": "BUY",
+                    "type": "MARKET",
+                    "size": 2
+                  }
+                },
+                "limitByAmount": {
+                  "summary": "LIMIT por monto",
+                  "value": {
+                    "instrumentId": 47,
+                    "side": "BUY",
+                    "type": "LIMIT",
+                    "amount": "100.00",
+                    "price": "30.00"
+                  }
+                },
+                "marketSell": {
+                  "summary": "MARKET de venta por cantidad",
+                  "value": {
+                    "instrumentId": 31,
+                    "side": "SELL",
+                    "type": "MARKET",
+                    "size": 1
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Orden persistida. MARKET con recursos queda FILLED, LIMIT con recursos queda NEW y una orden válida sin recursos queda REJECTED.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreatedOrder"
+                },
+                "examples": {
+                  "filled": {
+                    "summary": "FILLED con impacto inmediato",
+                    "value": {
+                      "id": 12,
+                      "userId": 1,
+                      "instrumentId": 47,
+                      "side": "BUY",
+                      "type": "MARKET",
+                      "size": 2,
+                      "price": "925.85",
+                      "status": "FILLED"
+                    }
+                  },
+                  "pending": {
+                    "summary": "NEW con reserva de 90.00 ARS",
+                    "value": {
+                      "id": 12,
+                      "userId": 1,
+                      "instrumentId": 47,
+                      "side": "BUY",
+                      "type": "LIMIT",
+                      "size": 3,
+                      "price": "30.00",
+                      "status": "NEW"
+                    }
+                  },
+                  "rejected": {
+                    "summary": "REJECTED sin efecto contable",
+                    "value": {
+                      "id": 12,
+                      "userId": 1,
+                      "instrumentId": 31,
+                      "side": "SELL",
+                      "type": "MARKET",
+                      "size": 1,
+                      "price": "1502.80",
+                      "status": "REJECTED",
+                      "rejectionReason": "INSUFFICIENT_SHARES"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador, cuerpo o cantidad calculada inválidos.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "INVALID_REQUEST"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "INVALID_REQUEST": {
+                    "value": {
+                      "code": "INVALID_REQUEST",
+                      "message": "Enviá exactamente uno entre size y amount."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe la cuenta o el instrumento.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": ["USER_NOT_FOUND", "INSTRUMENT_NOT_FOUND"]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "USER_NOT_FOUND": {
+                    "value": {
+                      "code": "USER_NOT_FOUND",
+                      "message": "La cuenta no existe."
+                    }
+                  },
+                  "INSTRUMENT_NOT_FOUND": {
+                    "value": {
+                      "code": "INSTRUMENT_NOT_FOUND",
+                      "message": "El instrumento no existe."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "El instrumento queda fuera del catálogo o no tiene un cierre válido para MARKET.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": [
+                            "INSTRUMENT_NOT_TRADABLE",
+                            "QUOTE_UNAVAILABLE"
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "INSTRUMENT_NOT_TRADABLE": {
+                    "value": {
+                      "code": "INSTRUMENT_NOT_TRADABLE",
+                      "message": "El instrumento está fuera del catálogo."
+                    }
+                  },
+                  "QUOTE_UNAVAILABLE": {
+                    "value": {
+                      "code": "QUOTE_UNAVAILABLE",
+                      "message": "El instrumento no tiene un cierre válido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Falló la lectura de recursos o la persistencia.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": ["DATA_INTEGRITY", "INTERNAL_ERROR"]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "DATA_INTEGRITY": {
+                    "value": {
+                      "code": "DATA_INTEGRITY",
+                      "message": "La cuenta contiene movimientos inválidos."
+                    }
+                  },
+                  "INTERNAL_ERROR": {
+                    "value": {
+                      "code": "INTERNAL_ERROR",
+                      "message": "No se pudo completar la solicitud."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "$ref": "#/components/responses/AccountBusy"
+          }
+        }
+      }
+    },
+    "/users/{userId}/orders/{orderId}/cancel": {
+      "post": {
+        "operationId": "cancelOrder",
+        "tags": ["Órdenes"],
+        "summary": "Cancelar una orden pendiente",
+        "description": "Cancela una orden NEW de la cuenta, libera su reserva y conserva la fecha de creación. La orden 5 de la demo inicial es cancelable. Para una orden nueva, usá el id que devolvió el envío.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/UserId"
+          },
+          {
+            "$ref": "#/components/parameters/OrderId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Orden cancelada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "$ref": "#/components/schemas/PositiveInt32"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "CANCELLED"
+                    }
+                  },
+                  "required": ["id", "status"],
+                  "additionalProperties": false
+                },
+                "examples": {
+                  "cancelled": {
+                    "value": {
+                      "id": 5,
+                      "status": "CANCELLED"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Identificador de cuenta u orden inválido.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "INVALID_REQUEST"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "INVALID_REQUEST": {
+                    "value": {
+                      "code": "INVALID_REQUEST",
+                      "message": "orderId debe ser un id decimal válido."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No existe la cuenta o no se encontró la orden para esa cuenta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": ["USER_NOT_FOUND", "ORDER_NOT_FOUND"]
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "USER_NOT_FOUND": {
+                    "value": {
+                      "code": "USER_NOT_FOUND",
+                      "message": "La cuenta no existe."
+                    }
+                  },
+                  "ORDER_NOT_FOUND": {
+                    "value": {
+                      "code": "ORDER_NOT_FOUND",
+                      "message": "La orden no existe para esta cuenta."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La orden pertenece a la cuenta y su estado es distinto de NEW.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "ORDER_NOT_CANCELLABLE"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "ORDER_NOT_CANCELLABLE": {
+                    "value": {
+                      "code": "ORDER_NOT_CANCELLABLE",
+                      "message": "Solo se pueden cancelar órdenes NEW."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/AccountBusy"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "UserId": {
+        "name": "userId",
+        "in": "path",
+        "required": true,
+        "description": "Identificador de cuenta. Se escribe con 1 a 10 dígitos decimales.",
+        "schema": {
+          "$ref": "#/components/schemas/PositiveInt32"
+        },
+        "example": 1
+      },
+      "OrderId": {
+        "name": "orderId",
+        "in": "path",
+        "required": true,
+        "description": "Identificador de la orden. Se escribe con 1 a 10 dígitos decimales.",
+        "schema": {
+          "$ref": "#/components/schemas/PositiveInt32"
+        },
+        "example": 5
+      }
+    },
+    "responses": {
+      "InternalError": {
+        "description": "Falló la operación.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "const": "INTERNAL_ERROR"
+                    }
+                  }
+                }
+              ]
+            },
+            "examples": {
+              "INTERNAL_ERROR": {
+                "value": {
+                  "code": "INTERNAL_ERROR",
+                  "message": "No se pudo completar la solicitud."
+                }
+              }
+            }
+          }
+        }
+      },
+      "AccountBusy": {
+        "description": "Se agotó la espera por el bloqueo de cuenta y se revirtió la transacción.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Error"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "const": "ACCOUNT_BUSY"
+                    }
+                  }
+                }
+              ]
+            },
+            "examples": {
+              "ACCOUNT_BUSY": {
+                "value": {
+                  "code": "ACCOUNT_BUSY",
+                  "message": "La cuenta está ocupada. Reintentá la solicitud."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "PositiveInt32": {
+        "type": "integer",
+        "format": "int32",
+        "minimum": 1,
+        "maximum": 2147483647
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"],
+        "additionalProperties": false
+      },
+      "InputPrice": {
+        "type": "string",
+        "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,8}(?:\\.[0-9]{1,2})?$",
+        "description": "Precio por acción en ARS para LIMIT. Positivo y con hasta dos decimales."
+      },
+      "InputAmount": {
+        "type": "string",
+        "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,18}(?:\\.[0-9]{1,2})?$",
+        "description": "Monto positivo en ARS con hasta dos decimales."
+      },
+      "Money": {
+        "type": "string",
+        "pattern": "^-?[0-9]+\\.[0-9]{2}$",
+        "description": "Importe en ARS, con dos decimales y signo cuando corresponde."
+      },
+      "Percentage": {
+        "type": "string",
+        "pattern": "^-?[0-9]+\\.[0-9]{2}$",
+        "description": "Rendimiento porcentual con dos decimales, redondeado half-up."
+      },
+      "InstrumentPage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/PositiveInt32"
+                },
+                "ticker": {
+                  "type": ["string", "null"]
+                },
+                "name": {
+                  "type": ["string", "null"]
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "ticker", "name", "type"],
+              "additionalProperties": false
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100000
+          }
+        },
+        "required": ["items", "limit", "offset"],
+        "additionalProperties": false
+      },
+      "Portfolio": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "$ref": "#/components/schemas/PositiveInt32"
+          },
+          "cash": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Caja ejecutada."
+          },
+          "availableCash": {
+            "$ref": "#/components/schemas/Money",
+            "description": "Caja ejecutada menos pesos reservados."
+          },
+          "totalValue": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Money"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Patrimonio total. Devuelve null si una posición abierta carece de cierre válido."
+          },
+          "positions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "instrumentId": {
+                  "$ref": "#/components/schemas/PositiveInt32"
+                },
+                "ticker": {
+                  "type": ["string", "null"]
+                },
+                "quantity": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Cantidad ejecutada de acciones, con signo."
+                },
+                "marketValue": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Money"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Cantidad multiplicada por el último cierre, o null cuando no hay cierre válido."
+                },
+                "positionReturnPct": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Percentage"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Retorno frente al costo promedio. Devuelve null para posiciones negativas o sin cierre válido."
+                },
+                "dailyReturnPct": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Percentage"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "Retorno frente al cierre anterior de la misma cotización. Devuelve null si alguno de los precios no es válido."
+                },
+                "historicalNegative": {
+                  "type": "boolean",
+                  "description": "Indica que la cantidad de la posición es negativa."
+                }
+              },
+              "required": [
+                "instrumentId",
+                "ticker",
+                "quantity",
+                "marketValue",
+                "positionReturnPct",
+                "dailyReturnPct",
+                "historicalNegative"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "cash",
+          "availableCash",
+          "totalValue",
+          "positions"
+        ],
+        "additionalProperties": false
+      },
+      "OrderInput": {
+        "type": "object",
+        "properties": {
+          "instrumentId": {
+            "$ref": "#/components/schemas/PositiveInt32"
+          },
+          "side": {
+            "type": "string",
+            "enum": ["BUY", "SELL"]
+          },
+          "type": {
+            "type": "string",
+            "enum": ["MARKET", "LIMIT"]
+          },
+          "size": {
+            "$ref": "#/components/schemas/PositiveInt32"
+          },
+          "amount": {
+            "$ref": "#/components/schemas/InputAmount"
+          },
+          "price": {
+            "description": "LIMIT exige un precio válido. MARKET ignora el campo."
+          }
+        },
+        "required": ["instrumentId", "side", "type"],
+        "oneOf": [
+          {
+            "title": "Por cantidad de acciones",
+            "required": ["size"]
+          },
+          {
+            "title": "Por monto en ARS",
+            "required": ["amount"]
+          }
+        ],
+        "if": {
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "LIMIT"
+            }
+          },
+          "required": ["type"]
+        },
+        "then": {
+          "properties": {
+            "price": {
+              "$ref": "#/components/schemas/InputPrice"
+            }
+          },
+          "required": ["price"]
+        }
+      },
+      "CreatedOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/PositiveInt32"
+          },
+          "userId": {
+            "$ref": "#/components/schemas/PositiveInt32"
+          },
+          "instrumentId": {
+            "$ref": "#/components/schemas/PositiveInt32"
+          },
+          "side": {
+            "type": "string",
+            "enum": ["BUY", "SELL"]
+          },
+          "type": {
+            "type": "string",
+            "enum": ["MARKET", "LIMIT"]
+          },
+          "size": {
+            "$ref": "#/components/schemas/PositiveInt32"
+          },
+          "price": {
+            "type": "string",
+            "pattern": "^(?=[0-9.]*[1-9])[0-9]{1,8}\\.[0-9]{2}$",
+            "description": "Precio unitario aplicado, positivo y con dos decimales."
+          },
+          "status": {
+            "type": "string",
+            "enum": ["FILLED", "NEW", "REJECTED"]
+          },
+          "rejectionReason": {
+            "type": "string",
+            "enum": ["INSUFFICIENT_CASH", "INSUFFICIENT_SHARES"],
+            "description": "INSUFFICIENT_CASH para una compra y INSUFFICIENT_SHARES para una venta."
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "instrumentId",
+          "side",
+          "type",
+          "size",
+          "price",
+          "status"
+        ],
+        "oneOf": [
+          {
+            "title": "Ejecutada",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "FILLED"
+              },
+              "type": {
+                "type": "string",
+                "const": "MARKET"
+              }
+            },
+            "not": {
+              "required": ["rejectionReason"]
+            }
+          },
+          {
+            "title": "Pendiente",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "NEW"
+              },
+              "type": {
+                "type": "string",
+                "const": "LIMIT"
+              }
+            },
+            "not": {
+              "required": ["rejectionReason"]
+            }
+          },
+          {
+            "title": "Rechazada por recursos",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "REJECTED"
+              }
+            },
+            "required": ["rejectionReason"]
+          }
+        ]
+      },
+      "SearchTerm": {
+        "type": "string",
+        "description": "Sin caracteres nulos. El servidor recorta los espacios de los extremos y admite de 1 a 100 puntos de código Unicode.",
+        "pattern": "^(?![\\s\\S]*\\u0000)\\s*\\S"
+      }
+    }
+  }
+}

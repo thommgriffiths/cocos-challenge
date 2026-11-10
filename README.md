@@ -36,6 +36,18 @@ npm start
 
 En otra terminal, `curl -fsS http://127.0.0.1:3000/health` devuelve `{"status":"ok"}` cuando la API puede consultar PostgreSQL. La API escucha en `127.0.0.1`. `Ctrl+C` cierra el servidor y el pool.
 
+## Documentación interactiva
+
+Con la API en ejecución, abrí [Swagger UI](http://127.0.0.1:3000/docs) para consultar los cinco endpoints. La [especificación OpenAPI](http://127.0.0.1:3000/openapi.json) se puede importar en un cliente HTTP. Si cambiaste `PORT`, usá el mismo puerto para la documentación y la API.
+
+Sobre una demo recién cargada, elegí **Try it out** y luego **Execute** en cada operación.
+
+1. En `GET /instruments`, usá `ticker=pamp` y borrá el valor precargado de `name` para omitirlo. La respuesta `200` incluye PAMP (`id` 47).
+2. En `POST /users/{userId}/orders`, usá `userId` `1` y elegí el ejemplo **LIMIT por monto** (compra PAMP por monto `100.00` a precio `30.00`). La respuesta `201` incluye `status: NEW` y `size: 3`. Copiá el `id` devuelto.
+3. En `POST /users/{userId}/orders/{orderId}/cancel`, usá `userId` `1` y ese `id` como `orderId`. La respuesta `200` incluye `status: CANCELLED`.
+
+Los `POST` modifican la demo. Si vas a seguir el recorrido `.http` de abajo con sus IDs de ejemplo, reiniciá la base de demo primero.
+
 ## Recorrido de evaluación
 
 Abrí [examples/demo.http](examples/demo.http) con un cliente `.http` como REST Client de VS Code. Ejecutá los bloques de arriba abajo, una vez sobre una demo recién cargada. La cuenta de ejemplo tiene id `1`. Si cambiaste `PORT` en `.env`, actualizá `@baseUrl` en el archivo de ejemplos.
@@ -68,7 +80,7 @@ Con PostgreSQL disponible, ejecutá los controles del proyecto.
 npm run check
 ```
 
-`npm run check` verifica formato, lint y tipos, compila y ejecuta los tests. GitHub Actions está configurado para ejecutar el mismo comando con un servicio PostgreSQL dedicado. Los tests pueden correr antes de `db:demo`. Cada suite de integración prepara el esquema y sus fixtures en una base temporal y la elimina al finalizar. `npm test` corre solo las pruebas.
+`npm run check` verifica formato, lint y tipos, valida la especificación OpenAPI y sus ejemplos, compila y ejecuta los tests. GitHub Actions está configurado para ejecutar el mismo comando con un servicio PostgreSQL dedicado. Los tests pueden correr antes de `db:demo`. Cada suite de integración prepara el esquema y sus fixtures en una base temporal y la elimina al finalizar. `npm test` corre solo las pruebas.
 
 `npm run test:unit` ejecuta las pruebas de configuración y de reglas puras sin levantar PostgreSQL.
 

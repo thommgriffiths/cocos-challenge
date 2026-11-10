@@ -2,6 +2,7 @@ import express from "express";
 import type { Pool } from "pg";
 import { sendHttpError } from "./http-error.ts";
 import { instrumentsRouter } from "./instruments/routes.ts";
+import { docsRouter } from "./openapi.ts";
 import { ordersRouter } from "./orders/routes.ts";
 import { portfolioRouter } from "./portfolio/routes.ts";
 
@@ -24,6 +25,7 @@ export function createApp(pool: Pool) {
   app.use(ordersRouter(pool));
   app.use(portfolioRouter(pool));
   app.use(instrumentsRouter(pool));
+  app.use(docsRouter());
   app.use(sendHttpError);
 
   return app;

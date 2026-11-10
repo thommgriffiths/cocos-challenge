@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Pool } from "pg";
 import { withTestDatabase } from "./database.ts";
 import { withTestApi } from "./http.ts";
+import { assertDocumentedResponse } from "./openapi.ts";
 
 const fixtures = await readFile(
   new URL("./orders-fixtures.sql", import.meta.url),
@@ -61,6 +62,7 @@ function assertProblem(reply: Reply, status: number, code: string) {
 
 function assertCreated(reply: Reply, fields: Record<string, unknown>) {
   assert.partialDeepStrictEqual(reply, { status: 201, body: fields });
+  assertDocumentedResponse("post", "/users/{userId}/orders", reply);
 }
 
 async function createdRows(pool: Pool) {
@@ -78,22 +80,21 @@ test("MARKET buys and sells at the deterministic latest close and persists UTC t
     const since = before.rows[0]?.now;
     assert.ok(since);
 
-    assert.deepEqual(
-      await submit(1, { ...marketBuy, size: 2, price: "1.00" }),
-      {
-        status: 201,
-        body: {
-          id: 7,
-          userId: 1,
-          instrumentId: 2,
-          side: "BUY",
-          type: "MARKET",
-          size: 2,
-          price: "30.00",
-          status: "FILLED",
-        },
+    const buy = await submit(1, { ...marketBuy, size: 2, price: "1.00" });
+    assertDocumentedResponse("post", "/users/{userId}/orders", buy);
+    assert.deepEqual(buy, {
+      status: 201,
+      body: {
+        id: 7,
+        userId: 1,
+        instrumentId: 2,
+        side: "BUY",
+        type: "MARKET",
+        size: 2,
+        price: "30.00",
+        status: "FILLED",
       },
-    );
+    });
     assert.deepEqual(await submit(1, { ...marketSell, size: 6 }), {
       status: 201,
       body: {
@@ -462,13 +463,25 @@ test("cancellation is scoped to the owner, preserves time and releases a reserva
     assertProblem(await cancel(1, 2), 409, "ORDER_NOT_CANCELLABLE");
 
     const replies = await overlap(pool, 2, () => cancel(2, 7));
-    assert.deepEqual(replies.find((reply) => reply.status === 200)?.body, {
+    const cancelled = replies.find((reply) => reply.status === 200);
+    assert.ok(cancelled);
+    assertDocumentedResponse(
+      "post",
+      "/users/{userId}/orders/{orderId}/cancel",
+      cancelled,
+    );
+    assert.deepEqual(cancelled.body, {
       id: 7,
       status: "CANCELLED",
     });
     const conflict = replies.find((reply) => reply.status === 409);
     assert.ok(conflict);
     assertProblem(conflict, 409, "ORDER_NOT_CANCELLABLE");
+    assertDocumentedResponse(
+      "post",
+      "/users/{userId}/orders/{orderId}/cancel",
+      conflict,
+    );
     assert.deepEqual(
       (await pool.query("SELECT datetime::text FROM orders WHERE id = 7")).rows,
       timestamp,
@@ -486,7 +499,9 @@ test("cancellation is scoped to the owner, preserves time and releases a reserva
 test("a timed-out account lock returns 503 without inserting an order", async () => {
   await withOrdersApi(async ({ pool, submit }) => {
     await withAccountBlocked(pool, 2, async () => {
-      assertProblem(await submit(2, marketBuy), 503, "ACCOUNT_BUSY");
+      const reply = await submit(2, marketBuy);
+      assertProblem(reply, 503, "ACCOUNT_BUSY");
+      assertDocumentedResponse("post", "/users/{userId}/orders", reply);
     });
     assert.deepEqual(await createdRows(pool), []);
     assert.equal((await submit(2, marketBuy)).status, 201);
