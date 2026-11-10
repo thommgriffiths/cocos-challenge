@@ -34,6 +34,11 @@
         "responses": {
           "200": {
             "description": "PostgreSQL y el esquema están listos.",
+            "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControlNoStore"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -60,6 +65,9 @@
           "503": {
             "description": "PostgreSQL no está disponible o el esquema está incompleto.",
             "headers": {
+              "Cache-Control": {
+                "$ref": "#/components/headers/CacheControlNoStore"
+              },
               "X-Request-Id": {
                 "$ref": "#/components/headers/RequestId"
               }
@@ -1290,6 +1298,14 @@
       }
     },
     "headers": {
+      "CacheControlNoStore": {
+        "description": "Evita que las cachés almacenen la respuesta de disponibilidad.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "const": "no-store"
+        }
+      },
       "RequestId": {
         "description": "Identificador para correlacionar un error con el registro del servidor.",
         "required": true,
