@@ -2,16 +2,17 @@ import type { Decimal } from "decimal.js";
 import type { PoolClient } from "pg";
 import { ReturnDecimal } from "./returns.ts";
 
-type Trade = {
-  instrumentid: number;
+type Execution = {
   side: "BUY" | "SELL";
   size: number;
   price_cents: string;
 };
 
-type CostState = { shares: bigint; averageCents: Decimal | null };
+type Trade = Execution & { instrumentid: number };
 
-function applyTrade(state: CostState, trade: Trade): CostState {
+export type CostState = { shares: bigint; averageCents: Decimal | null };
+
+export function applyTrade(state: CostState, trade: Execution): CostState {
   const units = BigInt(trade.size);
   const shares = state.shares + (trade.side === "BUY" ? units : -units);
   if (shares <= 0n) return { shares, averageCents: null };

@@ -1,11 +1,11 @@
 import type { Pool, PoolClient } from "pg";
 import { readAccountResources } from "../account-resources.ts";
 import { tradableInstrument } from "../catalog.ts";
-import { AppError, invalidRequest } from "../errors.ts";
-import { maxInt32 } from "../http-input.ts";
+import { AppError } from "../errors.ts";
 import { formatCents } from "../money.ts";
 import { readLatestQuotes } from "../quotes.ts";
 import { withLockedAccount } from "./account-transaction.ts";
+import { decideOrder, orderSize } from "./decision.ts";
 import type { OrderInput } from "./input.ts";
 
 async function applicablePrice(client: PoolClient, input: OrderInput) {
@@ -37,19 +37,6 @@ async function applicablePrice(client: PoolClient, input: OrderInput) {
   return quote.closeCents;
 }
 
-function orderSize(quantity: OrderInput["quantity"], priceCents: bigint) {
-  if ("size" in quantity) {
-    return quantity.size;
-  }
-  const size = quantity.amountCents / priceCents;
-  if (size < 1n || size > BigInt(maxInt32)) {
-    throw invalidRequest(
-      "El monto produce una cantidad de acciones fuera del rango permitido.",
-    );
-  }
-  return Number(size);
-}
-
 export function submitOrder(pool: Pool, userId: number, input: OrderInput) {
   return withLockedAccount(pool, userId, async (client) => {
     const {
@@ -59,33 +46,18 @@ export function submitOrder(pool: Pool, userId: number, input: OrderInput) {
     } = input;
     const priceCents = await applicablePrice(client, input);
     const size = orderSize(input.quantity, priceCents);
-    const units = BigInt(size);
     const { cashCents, reservedCashCents, positions } =
       await readAccountResources(client, userId);
-    const position = positions.get(instrumentId);
-    const availableShares =
-      (position?.shares ?? 0n) - (position?.reservedShares ?? 0n);
-
-    let rejectionReason:
-      "INSUFFICIENT_CASH" | "INSUFFICIENT_SHARES" | undefined;
-    if (side === "BUY" && units * priceCents > cashCents - reservedCashCents) {
-      rejectionReason = "INSUFFICIENT_CASH";
-    }
-    if (side === "SELL" && units > availableShares) {
-      rejectionReason = "INSUFFICIENT_SHARES";
-    }
-
-    const status = rejectionReason
-      ? "REJECTED"
-      : type === "MARKET"
-        ? "FILLED"
-        : "NEW";
+    const decision = decideOrder(
+      { side, type, size, priceCents },
+      { cashCents, reservedCashCents, position: positions.get(instrumentId) },
+    );
     const price = formatCents(priceCents);
     const inserted = await client.query<{ id: number }>(
       `INSERT INTO orders (userid, instrumentid, size, price, side, type, status, datetime)
        VALUES ($1, $2, $3, $4, $5, $6, $7, clock_timestamp() AT TIME ZONE 'UTC')
        RETURNING id`,
-      [userId, instrumentId, size, price, side, type, status],
+      [userId, instrumentId, size, price, side, type, decision.status],
     );
     const order = inserted.rows[0];
     if (!order) {
@@ -99,8 +71,7 @@ export function submitOrder(pool: Pool, userId: number, input: OrderInput) {
       type,
       size,
       price,
-      status,
-      ...(rejectionReason ? { rejectionReason } : {}),
+      ...decision,
     };
   });
 }

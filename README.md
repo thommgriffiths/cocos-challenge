@@ -70,6 +70,8 @@ npm run check
 
 `npm run check` verifica formato, lint y tipos, compila y ejecuta los tests. GitHub Actions está configurado para ejecutar el mismo comando con un servicio PostgreSQL dedicado. Los tests pueden correr antes de `db:demo`. Cada suite de integración prepara el esquema y sus fixtures en una base temporal y la elimina al finalizar. `npm test` corre solo las pruebas.
 
+`npm run test:unit` ejecuta las pruebas de configuración y de reglas puras sin levantar PostgreSQL.
+
 ## Decisiones y alcance
 
 - PostgreSQL concentra los movimientos. El envío y la cancelación toman el mismo bloqueo por cuenta. El portfolio lee caja, posiciones, cotizaciones y costo promedio en un único snapshot.

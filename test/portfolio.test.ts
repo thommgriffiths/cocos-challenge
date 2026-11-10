@@ -3,7 +3,6 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Pool } from "pg";
-import { formatReturn } from "../src/portfolio/returns.ts";
 import { withTestDatabase } from "./database.ts";
 import { withTestApi } from "./http.ts";
 
@@ -214,7 +213,6 @@ test("retains weighted costs across cursor batches and rounds percentage ties ha
         ],
       },
     });
-    assert.equal(formatReturn(100_000n, 100_001n), "0.00");
   });
 });
 

@@ -7,10 +7,17 @@ type QuoteRow = {
   previous_close_cents: string | null;
 };
 
+export type LatestQuote = {
+  instrumentId: number;
+  ticker: string | null;
+  closeCents: bigint | null;
+  previousCloseCents: bigint | null;
+};
+
 export async function readLatestQuotes(
   client: PoolClient,
   instrumentIds: number[],
-) {
+): Promise<LatestQuote[]> {
   if (instrumentIds.length === 0) return [];
 
   const { rows } = await client.query<QuoteRow>(
