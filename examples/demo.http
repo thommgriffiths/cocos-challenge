@@ -1,0 +1,56 @@
+# Ejecutar en orden sobre una demo recién cargada.
+@baseUrl = http://127.0.0.1:3000
+@userId = 1
+@limitOrderId = 13
+
+### 1. Salud
+GET {{baseUrl}}/health
+
+### 2. Portfolio inicial
+GET {{baseUrl}}/users/{{userId}}/portfolio
+
+### 3. Buscar PAMP por ticker y nombre
+GET {{baseUrl}}/instruments?ticker=pamp&name=holding
+
+### 4. Comprar dos PAMP a mercado
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 47,
+  "side": "BUY",
+  "type": "MARKET",
+  "size": 2
+}
+
+### 5. Comprar PAMP por monto con límite
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 47,
+  "side": "BUY",
+  "type": "LIMIT",
+  "amount": "2150.00",
+  "price": "1000.00"
+}
+
+### 6. Portfolio con la reserva
+GET {{baseUrl}}/users/{{userId}}/portfolio
+
+### 7. Vender una BMA sin tenencia suficiente
+POST {{baseUrl}}/users/{{userId}}/orders
+Content-Type: application/json
+
+{
+  "instrumentId": 31,
+  "side": "SELL",
+  "type": "MARKET",
+  "size": 1
+}
+
+### 8. Cancelar la compra pendiente del paso 5
+POST {{baseUrl}}/users/{{userId}}/orders/{{limitOrderId}}/cancel
+
+### 9. Portfolio final
+GET {{baseUrl}}/users/{{userId}}/portfolio
