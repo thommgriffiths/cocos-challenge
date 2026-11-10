@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { Ajv2020 } from "ajv/dist/2020.js";
 import { Pool } from "pg";
 import openapi from "../docs/openapi.json" with { type: "json" };
 import { withTestApi } from "./http.ts";
@@ -57,5 +58,28 @@ test("serves Swagger UI and the five-operation OpenAPI contract without querying
     assert.equal(query.mock.callCount(), 0);
   } finally {
     await pool.end();
+  }
+});
+
+test("OpenAPI validates search term length after trimming Unicode whitespace", () => {
+  const maxLengthTerm = "😀".repeat(100);
+  const cases = [
+    ["\u00a0x\t", true],
+    [maxLengthTerm, true],
+    ["\u00a0" + maxLengthTerm + "\t", true],
+    ["", false],
+    [" \t", false],
+    ["a\0b", false],
+    ["x".repeat(101), false],
+    [maxLengthTerm + "😀", false],
+  ] as const;
+  // Count surrogate pairs once even in validators that omit the Unicode flag.
+  for (const unicodeRegExp of [true, false]) {
+    const validate = new Ajv2020({ unicodeRegExp }).compile(
+      openapi.components.schemas.SearchTerm,
+    );
+    for (const [term, expected] of cases) {
+      assert.equal(validate(term), expected);
+    }
   }
 });

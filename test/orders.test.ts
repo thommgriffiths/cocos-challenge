@@ -384,6 +384,44 @@ test("a deferred failure at COMMIT rolls back the order and idempotency key", as
   });
 });
 
+test("retry recovers the original order when the COMMIT acknowledgement is lost", async (context) => {
+  await withOrdersApi(async ({ pool, submit }) => {
+    pool.once("acquire", (client) => {
+      const query = client.query.bind(client);
+      const fault = context.mock.method(
+        client,
+        "query",
+        async (sql: string, values?: unknown[]) => {
+          const result = await query(sql, values);
+          if (sql === "COMMIT") {
+            // PostgreSQL committed. Simulate the application losing the acknowledgement.
+            fault.mock.restore();
+            throw new Error("simulated lost COMMIT acknowledgement");
+          }
+          return result;
+        },
+      );
+    });
+
+    const key = "commit-ack-lost";
+    assertProblem(await submit(2, marketBuy, key), 500, "INTERNAL_ERROR");
+    const orders = await createdRows(pool);
+    assert.equal(orders.length, 1);
+    assert.partialDeepStrictEqual(orders[0], { id: 7, status: "FILLED" });
+    const saved = await pool.query(
+      "SELECT orderid, response FROM order_idempotency WHERE userid = $1 AND idempotency_key = $2",
+      [2, key],
+    );
+    assert.equal(saved.rowCount, 1);
+    assert.equal(saved.rows[0].orderid, 7);
+
+    const reply = await submit(2, marketBuy, key);
+    assertCreated(reply, { id: 7, status: "FILLED" });
+    assert.deepEqual(reply.body, saved.rows[0].response);
+    assert.deepEqual(await createdRows(pool), orders);
+  });
+});
+
 async function withAccountBlocked<T>(
   pool: Pool,
   user: number,
@@ -654,6 +692,29 @@ test("cancellation is scoped to the owner, preserves time and releases a reserva
     assert.deepEqual(
       (await createdRows(pool)).map((row) => row.status),
       ["CANCELLED", "FILLED", "REJECTED"],
+    );
+  });
+});
+
+test("cancelling a pending sell makes its reserved shares available again", async () => {
+  await withOrdersApi(async ({ pool, submit, cancel }) => {
+    assertCreated(
+      await submit(3, { ...marketSell, type: "LIMIT", size: 3, price: "20" }),
+      { id: 7, status: "NEW" },
+    );
+    const sell = { ...marketSell, size: 4 };
+    assertCreated(await submit(3, sell), {
+      status: "REJECTED",
+      rejectionReason: "INSUFFICIENT_SHARES",
+    });
+    assert.deepEqual(await cancel(3, 7), {
+      status: 200,
+      body: { id: 7, status: "CANCELLED" },
+    });
+    assertCreated(await submit(3, sell), { size: 4, status: "FILLED" });
+    assert.deepEqual(
+      (await createdRows(pool)).map((row) => row.status),
+      ["CANCELLED", "REJECTED", "FILLED"],
     );
   });
 });

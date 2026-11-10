@@ -1294,7 +1294,7 @@
       "SearchTerm": {
         "type": "string",
         "description": "Sin caracteres nulos. El servidor recorta los espacios de los extremos y admite de 1 a 100 puntos de código Unicode.",
-        "pattern": "^(?![\\s\\S]*\\u0000)\\s*\\S"
+        "pattern": "^(?![\\s\\S]*\\u0000)\\s*(?=\\S)(?:[\\uD800-\\uDBFF][\\uDC00-\\uDFFF]|[^\\uD800-\\uDFFF]){1,100}\\s*$"
       }
     },
     "headers": {
