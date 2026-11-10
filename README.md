@@ -48,6 +48,8 @@ Sobre una demo recién cargada, elegí **Try it out** y luego **Execute** en cad
 
 Los `POST` modifican la demo. Si vas a seguir el recorrido `.http` de abajo con sus IDs de ejemplo, reiniciá la base de demo primero.
 
+Para probar un reintento, agregá una `Idempotency-Key` en Swagger al enviar la orden y repetí el mismo `POST` con esa clave. Vas a recibir el `201` con el mismo ID. Si cambiás la solicitud con esa misma clave, la API devuelve `409`. [Reglas de idempotencia](docs/contract.md#reintentos-con-idempotencia).
+
 ## Recorrido de evaluación
 
 Abrí [examples/demo.http](examples/demo.http) con un cliente `.http` como REST Client de VS Code. Ejecutá los bloques de arriba abajo, una vez sobre una demo recién cargada. La cuenta de ejemplo tiene id `1`. Si cambiaste `PORT` en `.env`, actualizá `@baseUrl` en el archivo de ejemplos.
@@ -64,7 +66,7 @@ Abrí [examples/demo.http](examples/demo.http) con un cliente `.http` como REST 
 | 8    | Cancelar la compra pendiente           | `200`, orden `13` en `CANCELLED`. Libera `2000.00`.                                                                                                             |
 | 9    | Portfolio final                        | `200`, efectivo `751148.30`, disponible `625648.30`, patrimonio `889756.00` y 42 PAMP.                                                                          |
 
-Los `GET` se pueden repetir. Los `POST` de envío crean una fila, incluso cuando devuelven `REJECTED`, y la cancelación cambia el estado de la orden. `@limitOrderId` apunta al id `13`, que devuelve el paso 5 al seguir el recorrido en la demo inicial. Para cancelar otra orden pendiente, usá el id que devolvió su envío. Una búsqueda con `name=sin-coincidencias` devuelve `200` con `{"items":[],"limit":20,"offset":0}`.
+Los `GET` se pueden repetir. En este recorrido, los envíos crean una fila, incluso cuando devuelven `REJECTED`, y la cancelación cambia el estado de la orden. `@limitOrderId` apunta al id `13`, que devuelve el paso 5 al seguir el recorrido en la demo inicial. Para cancelar otra orden pendiente, usá el id que devolvió su envío. Una búsqueda con `name=sin-coincidencias` devuelve `200` con `{"items":[],"limit":20,"offset":0}`.
 
 Para repetir el recorrido desde cero, detené la API con `Ctrl+C` y ejecutá `docker stop cocos-challenge-postgres` (o `container stop cocos-challenge-postgres`). El contenedor de demo se elimina al detenerse porque se creó con `--rm`. Repetí los comandos de arranque de PostgreSQL de arriba, `npm run db:demo`, `npm run build` y `npm start`.
 

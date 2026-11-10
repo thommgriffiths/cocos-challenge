@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { request } from "node:http";
 import { test } from "node:test";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Pool } from "pg";
@@ -14,12 +15,20 @@ const fixtures = await readFile(
 const marketBuy = { instrumentId: 2, side: "BUY", type: "MARKET", size: 1 };
 const marketSell = { ...marketBuy, side: "SELL" };
 
-async function post(baseUrl: string, path: string, body?: unknown) {
+async function post(
+  baseUrl: string,
+  path: string,
+  body?: unknown,
+  key?: string,
+) {
   const response = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     ...(body !== undefined
       ? {
-          headers: { "content-type": "application/json" },
+          headers: {
+            "content-type": "application/json",
+            ...(key === undefined ? {} : { "Idempotency-Key": key }),
+          },
           body: JSON.stringify(body),
         }
       : {}),
@@ -32,7 +41,7 @@ type Reply = Awaited<ReturnType<typeof post>>;
 type OrdersApi = {
   pool: Pool;
   baseUrl: string;
-  submit: (user: number, body: unknown) => Promise<Reply>;
+  submit: (user: number, body: unknown, key?: string) => Promise<Reply>;
   cancel: (user: number, order: number) => Promise<Reply>;
 };
 
@@ -43,7 +52,8 @@ async function withOrdersApi(run: (api: OrdersApi) => Promise<void>) {
       await run({
         pool,
         baseUrl,
-        submit: (user, body) => post(baseUrl, `/users/${user}/orders`, body),
+        submit: (user, body, key) =>
+          post(baseUrl, `/users/${user}/orders`, body, key),
         cancel: (user, order) =>
           post(baseUrl, `/users/${user}/orders/${order}/cancel`),
       });
@@ -347,7 +357,7 @@ test("invalid active history fails closed while cancelled and rejected rows do n
   });
 });
 
-test("a deferred failure at COMMIT rolls back the inserted order and releases the account", async () => {
+test("a deferred failure at COMMIT rolls back the order and idempotency key", async () => {
   await withOrdersApi(async ({ pool, submit }) => {
     await pool.query(`
       CREATE FUNCTION fail_order_commit() RETURNS trigger LANGUAGE plpgsql AS $$
@@ -355,11 +365,18 @@ test("a deferred failure at COMMIT rolls back the inserted order and releases th
       CREATE CONSTRAINT TRIGGER fail_order_commit AFTER INSERT ON orders
       DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fail_order_commit();
     `);
-    assertProblem(await submit(2, marketBuy), 500, "INTERNAL_ERROR");
+    const key = "commit-retry";
+    assertProblem(await submit(2, marketBuy, key), 500, "INTERNAL_ERROR");
     assert.deepEqual(await createdRows(pool), []);
+    assert.equal(
+      (await pool.query("SELECT 1 FROM order_idempotency")).rowCount,
+      0,
+    );
     await pool.query("DROP TRIGGER fail_order_commit ON orders");
-    const reply = await submit(2, { ...marketBuy, size: 3 });
-    assert.equal(reply.status, 201);
+    const retry = { ...marketBuy, size: 3 };
+    const reply = await submit(2, retry, key);
+    assertCreated(reply, { status: "FILLED", size: 3 });
+    assert.deepEqual(await submit(2, retry, key), reply);
     assert.deepEqual(
       (await createdRows(pool)).map((row) => row.status),
       ["FILLED"],
@@ -440,6 +457,151 @@ test("overlapping buys and sells cannot spend or sell the same resources twice",
         [3, 3, "REJECTED"],
       ],
     );
+  });
+});
+
+test("concurrent retries return one MARKET order and preserve the original quote", async () => {
+  await withOrdersApi(async ({ pool, submit }) => {
+    const key = "same-market";
+    const body = { ...marketBuy, size: 2 };
+    const [first, second] = await overlap(pool, 2, () => submit(2, body, key));
+    assert.ok(first);
+    assertCreated(first, { id: 7, size: 2, price: "30.00", status: "FILLED" });
+    assert.deepEqual(second, first);
+
+    await pool.query("UPDATE marketdata SET close = 'NaN' WHERE id = 3");
+    assert.deepEqual(
+      await submit(2, { ...body, price: "ignored" }, key),
+      first,
+    );
+    assert.equal((await createdRows(pool)).length, 1);
+    assert.deepEqual(
+      (
+        await pool.query(
+          "SELECT userid, orderid, response FROM order_idempotency",
+        )
+      ).rows,
+      [{ userid: 2, orderid: 7, response: first.body }],
+    );
+  });
+});
+
+test("replays a normalized LIMIT after cancellation and scopes conflicts to the account", async () => {
+  await withOrdersApi(async ({ pool, submit, cancel }) => {
+    const key = "limit-retry";
+    const body = {
+      instrumentId: 2,
+      side: "BUY",
+      type: "LIMIT",
+      amount: "100.00",
+      price: "30.00",
+    };
+    const created = await submit(2, body, key);
+    assertCreated(created, { id: 7, size: 3, status: "NEW" });
+    assert.equal((await cancel(2, 7)).status, 200);
+
+    const normalized = {
+      amount: "0100.0",
+      price: "030",
+      side: "BUY",
+      type: "LIMIT",
+      instrumentId: 2,
+    };
+    assert.deepEqual(await submit(2, normalized, key), created);
+    const conflict = await submit(
+      2,
+      { ...marketBuy, type: "LIMIT", size: 3, price: "30" },
+      key,
+    );
+    assertProblem(conflict, 409, "IDEMPOTENCY_CONFLICT");
+    assertDocumentedResponse("post", "/users/{userId}/orders", conflict);
+    assertCreated(await submit(1, marketBuy, key), {
+      id: 8,
+      userId: 1,
+      status: "FILLED",
+    });
+    assert.deepEqual(
+      (await createdRows(pool)).map((row) => row.status),
+      ["CANCELLED", "FILLED"],
+    );
+  });
+});
+
+test("replays a persisted rejection after funds change", async () => {
+  await withOrdersApi(async ({ pool, submit }) => {
+    const body = { ...marketBuy, size: 4 };
+    const rejected = await submit(2, body, "rejected-order");
+    assertCreated(rejected, {
+      id: 7,
+      status: "REJECTED",
+      rejectionReason: "INSUFFICIENT_CASH",
+    });
+    await pool.query(`INSERT INTO orders (userid, instrumentid, size, side, status)
+      VALUES (2, 1, 50, 'CASH_IN', 'FILLED')`);
+    assert.deepEqual(await submit(2, body, "rejected-order"), rejected);
+    assertCreated(await submit(2, body, "new-order"), {
+      id: 9,
+      status: "FILLED",
+    });
+    assert.deepEqual(
+      (await createdRows(pool)).map((row) => row.status),
+      ["REJECTED", "FILLED", "FILLED"],
+    );
+  });
+});
+
+test("rejects invalid or repeated keys and leaves invalid orders free to retry", async () => {
+  await withOrdersApi(async ({ pool, baseUrl, submit }) => {
+    for (const key of ["", "x".repeat(129), "two keys", "first,second"]) {
+      assertProblem(await submit(2, marketBuy, key), 400, "INVALID_REQUEST");
+    }
+
+    const body = JSON.stringify(marketBuy);
+    const duplicate = await new Promise<Reply>((resolve, reject) => {
+      const req = request(
+        `${baseUrl}/users/2/orders`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": String(Buffer.byteLength(body)),
+            "Idempotency-Key": ["same", "same"],
+          },
+          signal: AbortSignal.timeout(4_000),
+        },
+        async (response) => {
+          try {
+            const chunks: Buffer[] = [];
+            for await (const chunk of response) chunks.push(Buffer.from(chunk));
+            assert.ok(response.statusCode);
+            resolve({
+              status: response.statusCode,
+              body: JSON.parse(Buffer.concat(chunks).toString()),
+            });
+          } catch (error) {
+            reject(error);
+          }
+        },
+      );
+      req.on("error", reject).end(body);
+    });
+    assertProblem(duplicate, 400, "INVALID_REQUEST");
+
+    const reusableKey = "A".repeat(128);
+    assertProblem(
+      await submit(2, { ...marketBuy, instrumentId: 3 }, reusableKey),
+      422,
+      "QUOTE_UNAVAILABLE",
+    );
+    assert.deepEqual(await createdRows(pool), []);
+    assert.equal(
+      (await pool.query("SELECT 1 FROM order_idempotency")).rowCount,
+      0,
+    );
+    assertCreated(await submit(2, marketBuy, reusableKey), {
+      id: 7,
+      status: "FILLED",
+    });
   });
 });
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "Cocos Challenge Backend",
     "version": "0.1.0",
-    "description": "API local de evaluación en ARS. Los ejemplos de escritura parten de la demo recién cargada y son independientes. Un envío que devuelve 201 crea una fila, incluso con estado REJECTED. La cancelación cambia el estado de una orden y libera su reserva. Una ruta desconocida devuelve 404 con el código ROUTE_NOT_FOUND."
+    "description": "API local de evaluación en ARS. Los ejemplos de escritura parten de la demo recién cargada y son independientes. El primer envío válido crea una fila, incluso con estado REJECTED. Una clave de idempotencia permite recuperar el resultado de ese envío. La cancelación cambia el estado de una orden y libera su reserva. Una ruta desconocida devuelve 404 con el código ROUTE_NOT_FOUND."
   },
   "servers": [
     {
@@ -407,10 +407,22 @@
         "operationId": "submitOrder",
         "tags": ["Órdenes"],
         "summary": "Enviar una orden",
-        "description": "Crea una orden de compra o venta. MARKET usa el cierre de la cotización más reciente e ignora price. Si esa cotización carece de cierre válido, devuelve 422. LIMIT aplica el precio indicado y queda pendiente cuando hay recursos. Con amount se toma la cantidad entera máxima al precio aplicable. Es un tope de gasto en BUY y de valor bruto en SELL. Se controlan los recursos disponibles después de reservas. Cada envío válido crea una fila, incluso REJECTED por recursos insuficientes.",
+        "description": "Crea una orden de compra o venta. MARKET usa el cierre de la cotización más reciente e ignora price. Si esa cotización carece de cierre válido, devuelve 422. LIMIT aplica el precio indicado y queda pendiente cuando hay recursos. Con amount se toma la cantidad entera máxima al precio aplicable. Es un tope de gasto en BUY y de valor bruto en SELL. Se controlan los recursos disponibles después de reservas. El primer envío válido crea una fila, incluso REJECTED por recursos insuficientes. Un reintento con la misma clave y solicitud normalizada devuelve el 201 y la respuesta original.",
         "parameters": [
           {
             "$ref": "#/components/parameters/UserId"
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": false,
+            "description": "Clave opcional por cuenta. Reutilizá el valor y la misma solicitud para recuperar el resultado original. Otra solicitud bien formada con esa clave devuelve 409.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._~-]{1,128}$"
+            }
           }
         ],
         "requestBody": {
@@ -455,7 +467,7 @@
         },
         "responses": {
           "201": {
-            "description": "Orden persistida. MARKET con recursos queda FILLED, LIMIT con recursos queda NEW y una orden válida sin recursos queda REJECTED.",
+            "description": "Orden persistida. MARKET con recursos queda FILLED, LIMIT con recursos queda NEW y una orden válida sin recursos queda REJECTED. Un reintento idempotente recupera el resultado original.",
             "content": {
               "application/json": {
                 "schema": {
@@ -507,7 +519,7 @@
             }
           },
           "400": {
-            "description": "Identificador, cuerpo o cantidad calculada inválidos.",
+            "description": "Identificador, cuerpo, cantidad calculada o clave de idempotencia inválidos.",
             "content": {
               "application/json": {
                 "schema": {
@@ -568,6 +580,37 @@
                     "value": {
                       "code": "INSTRUMENT_NOT_FOUND",
                       "message": "El instrumento no existe."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "La clave de idempotencia ya se usó con otra solicitud en la cuenta.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Error"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "const": "IDEMPOTENCY_CONFLICT"
+                        }
+                      }
+                    }
+                  ]
+                },
+                "examples": {
+                  "IDEMPOTENCY_CONFLICT": {
+                    "value": {
+                      "code": "IDEMPOTENCY_CONFLICT",
+                      "message": "La clave de idempotencia ya se usó con otra solicitud."
                     }
                   }
                 }

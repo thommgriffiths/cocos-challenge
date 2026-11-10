@@ -8,10 +8,12 @@ export async function checkReadiness(pool: Pool) {
       SELECT u.id, i.id, i.ticker, i.name, i.type,
              o.id, o.userid, o.instrumentid, o.size, o.price, o.type, o.side,
              o.status, o.datetime,
+             k.userid, k.idempotency_key, k.request_hash, k.orderid, k.response,
              m.id, m.instrumentid, m.date, m.close, m.previousclose
       FROM public.users AS u
       CROSS JOIN public.instruments AS i
       CROSS JOIN public.orders AS o
+      CROSS JOIN public.order_idempotency AS k
       CROSS JOIN public.marketdata AS m
       LIMIT 0
     `);

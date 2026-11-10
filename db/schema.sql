@@ -28,6 +28,15 @@ CREATE TABLE orders (
 
 CREATE INDEX orders_userid_datetime_id_idx ON orders (userid, datetime, id);
 
+CREATE TABLE order_idempotency (
+  userid INT NOT NULL REFERENCES users(id),
+  idempotency_key VARCHAR(128) NOT NULL,
+  request_hash CHAR(64) NOT NULL,
+  orderid INT NOT NULL UNIQUE REFERENCES orders(id),
+  response JSONB NOT NULL,
+  PRIMARY KEY (userid, idempotency_key)
+);
+
 CREATE TABLE marketdata (
   id SERIAL PRIMARY KEY,
   instrumentId INT,

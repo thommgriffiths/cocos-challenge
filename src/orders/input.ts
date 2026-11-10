@@ -9,6 +9,17 @@ export type OrderInput = {
   quantity: { size: number } | { amountCents: bigint };
 };
 
+export function parseIdempotencyKey(values: string[] | undefined) {
+  if (values === undefined) return undefined;
+  const [key] = values;
+  if (values.length !== 1 || !key || !/^[A-Za-z0-9._~-]{1,128}$/.test(key)) {
+    throw invalidRequest(
+      "Idempotency-Key debe enviarse una sola vez con entre 1 y 128 caracteres válidos.",
+    );
+  }
+  return key;
+}
+
 function positiveMoney(value: unknown, field: string, maxDigits: number) {
   const decimal = new RegExp(`^\\d{1,${maxDigits}}(?:\\.\\d{1,2})?$`);
   if (typeof value !== "string" || !decimal.test(value)) {

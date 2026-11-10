@@ -1,7 +1,7 @@
 import express from "express";
 import type { Pool } from "pg";
 import { parsePathId } from "../http-input.ts";
-import { parseOrderInput } from "./input.ts";
+import { parseIdempotencyKey, parseOrderInput } from "./input.ts";
 import { cancelOrder, submitOrder } from "./service.ts";
 
 export function ordersRouter(pool: Pool) {
@@ -13,7 +13,10 @@ export function ordersRouter(pool: Pool) {
     async (request, response) => {
       const userId = parsePathId(request.params.userId, "userId");
       const input = parseOrderInput(request.body);
-      const order = await submitOrder(pool, userId, input);
+      const key = parseIdempotencyKey(
+        request.headersDistinct["idempotency-key"],
+      );
+      const order = await submitOrder(pool, userId, input, key);
       response.status(201).json(order);
     },
   );

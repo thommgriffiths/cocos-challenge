@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Pool, PoolClient } from "pg";
 import { readAccountResources } from "../account-resources.ts";
 import { tradableInstrument } from "../catalog.ts";
@@ -37,42 +38,103 @@ async function applicablePrice(client: PoolClient, input: OrderInput) {
   return quote.closeCents;
 }
 
-export function submitOrder(pool: Pool, userId: number, input: OrderInput) {
+async function insertOrder(
+  client: PoolClient,
+  userId: number,
+  input: OrderInput,
+) {
+  const {
+    instrumentId,
+    side,
+    pricing: { type },
+  } = input;
+  const priceCents = await applicablePrice(client, input);
+  const size = orderSize(input.quantity, priceCents);
+  const { cashCents, reservedCashCents, positions } =
+    await readAccountResources(client, userId);
+  const decision = decideOrder(
+    { side, type, size, priceCents },
+    { cashCents, reservedCashCents, position: positions.get(instrumentId) },
+  );
+  const price = formatCents(priceCents);
+  const inserted = await client.query<{ id: number }>(
+    `INSERT INTO orders (userid, instrumentid, size, price, side, type, status, datetime)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, clock_timestamp() AT TIME ZONE 'UTC')
+     RETURNING id`,
+    [userId, instrumentId, size, price, side, type, decision.status],
+  );
+  const order = inserted.rows[0];
+  if (!order) {
+    throw new Error("La inserción no devolvió la orden.");
+  }
+  return {
+    id: order.id,
+    userId,
+    instrumentId,
+    side,
+    type,
+    size,
+    price,
+    ...decision,
+  };
+}
+
+function orderFingerprint({
+  instrumentId,
+  side,
+  pricing,
+  quantity,
+}: OrderInput) {
+  // Keep the tuple stable while existing keys can be retried.
+  const canonical = JSON.stringify([
+    instrumentId,
+    side,
+    pricing.type,
+    pricing.type === "LIMIT" ? pricing.cents.toString() : null,
+    "size" in quantity
+      ? ["size", quantity.size]
+      : ["amount", quantity.amountCents.toString()],
+  ]);
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
+export function submitOrder(
+  pool: Pool,
+  userId: number,
+  input: OrderInput,
+  idempotencyKey?: string,
+) {
   return withLockedAccount(pool, userId, async (client) => {
+    if (idempotencyKey === undefined) return insertOrder(client, userId, input);
+
+    const requestHash = orderFingerprint(input);
     const {
-      instrumentId,
-      side,
-      pricing: { type },
-    } = input;
-    const priceCents = await applicablePrice(client, input);
-    const size = orderSize(input.quantity, priceCents);
-    const { cashCents, reservedCashCents, positions } =
-      await readAccountResources(client, userId);
-    const decision = decideOrder(
-      { side, type, size, priceCents },
-      { cashCents, reservedCashCents, position: positions.get(instrumentId) },
+      rows: [saved],
+    } = await client.query<{
+      request_hash: string;
+      response: Awaited<ReturnType<typeof insertOrder>>;
+    }>(
+      `SELECT request_hash, response FROM order_idempotency
+       WHERE userid = $1 AND idempotency_key = $2`,
+      [userId, idempotencyKey],
     );
-    const price = formatCents(priceCents);
-    const inserted = await client.query<{ id: number }>(
-      `INSERT INTO orders (userid, instrumentid, size, price, side, type, status, datetime)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, clock_timestamp() AT TIME ZONE 'UTC')
-       RETURNING id`,
-      [userId, instrumentId, size, price, side, type, decision.status],
-    );
-    const order = inserted.rows[0];
-    if (!order) {
-      throw new Error("La inserción no devolvió la orden.");
+    if (saved) {
+      if (saved.request_hash !== requestHash) {
+        throw new AppError(
+          "IDEMPOTENCY_CONFLICT",
+          "La clave de idempotencia ya se usó con otra solicitud.",
+        );
+      }
+      return saved.response;
     }
-    return {
-      id: order.id,
-      userId,
-      instrumentId,
-      side,
-      type,
-      size,
-      price,
-      ...decision,
-    };
+
+    const order = await insertOrder(client, userId, input);
+    await client.query(
+      `INSERT INTO order_idempotency (userid, idempotency_key, request_hash, orderid, response)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [userId, idempotencyKey, requestHash, order.id, order],
+    );
+    return order;
   });
 }
 

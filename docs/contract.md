@@ -15,6 +15,8 @@ El esquema local toma como referencia el SQL provisto con la consigna. La inspec
 
 PostgreSQL almacena estos identificadores sin comillas en minúsculas. `orders` tiene claves foráneas hacia usuarios e instrumentos y `marketdata` hacia instrumentos. Las columnas distintas de `id` admiten nulos. Los cuatro `id` tienen defaults de secuencia. La carga conserva el orden de inserción en una base vacía porque las referencias del seed usan esos ids.
 
+El esquema local agrega `order_idempotency`, una tabla vinculada a la cuenta y a la orden. Su clave primaria es `(userid, idempotency_key)`. Para conservar una demo local anterior, detené la API y ejecutá la sentencia `CREATE TABLE order_idempotency` de [db/schema.sql](../db/schema.sql) antes de volver a arrancarla. La carga desde una base vacía crea la tabla automáticamente.
+
 La comparación de datos se limitó a los 11 movimientos de la cuenta de demo y a siete instrumentos, incluidos los que determinan los ejemplos de portfolio y el retorno de BBAR. La muestra coincidió con el seed. `PGR` e `IRCP` carecen de cotización y `ARS` se contabiliza como efectivo.
 
 ## Convenciones HTTP
@@ -30,6 +32,7 @@ La comparación de datos se limitó a los 11 movimientos de la cuenta de demo y 
 | `404` | `ROUTE_NOT_FOUND` | La ruta o el método solicitado no corresponde a una operación de la API. |
 | `404` | `USER_NOT_FOUND`, `INSTRUMENT_NOT_FOUND`, `ORDER_NOT_FOUND` | El recurso no existe. Una orden que pertenece a otra cuenta también devuelve `ORDER_NOT_FOUND`. |
 | `409` | `ORDER_NOT_CANCELLABLE` | La orden pertenece a la cuenta y su estado difiere de `NEW`. |
+| `409` | `IDEMPOTENCY_CONFLICT` | La clave ya se usó para otra solicitud bien formada de la misma cuenta. |
 | `422` | `INSTRUMENT_NOT_TRADABLE`, `QUOTE_UNAVAILABLE` | El instrumento existe y queda fuera del catálogo, o una orden `MARKET` carece de cierre válido. |
 | `503` | `ACCOUNT_BUSY` | Se agotó la espera por el bloqueo de cuenta y se revirtió la transacción. |
 | `503` | `SCHEMA_NOT_READY`, `DATABASE_UNAVAILABLE` | La comprobación de disponibilidad detectó un esquema incompleto o no pudo consultar PostgreSQL. |
@@ -74,7 +77,15 @@ Una venta `MARKET` de 1 BMA (`instrumentId` 31) desde la misma cuenta inicial de
 {"id":12,"userId":1,"instrumentId":31,"side":"SELL","type":"MARKET","size":1,"price":"1502.80","status":"REJECTED","rejectionReason":"INSUFFICIENT_SHARES"}
 ```
 
-Los ejemplos de escritura son independientes y parten del mismo estado. Un segundo `POST` de envío crea otra orden. Ante una respuesta perdida, el cliente puede desconocer si el primer envío se guardó.
+Los ejemplos de escritura son independientes y parten del mismo estado.
+
+### Reintentos con idempotencia
+
+En el alta, enviá opcionalmente `Idempotency-Key` una sola vez, con 1 a 128 caracteres de `A-Z`, `a-z`, `0-9`, `.`, `_`, `~` o `-`. Generá una clave por intención de compra o venta y reutilizala ante una respuesta perdida o un `503 ACCOUNT_BUSY`. La clave distingue mayúsculas y se usa dentro de cada cuenta. Cada envío sin clave se procesa como una orden nueva.
+
+- La misma clave y solicitud normalizada devuelven el `201` y los campos de la respuesta original, incluidos el ID, precio aplicado, estado y motivo de rechazo si corresponde. La respuesta original queda registrada incluso si cambia la cotización, la caja o el estado de la orden.
+- La misma clave con otra solicitud bien formada devuelve `409 IDEMPOTENCY_CONFLICT`. La comparación usa los importes en centavos, distingue `size` de `amount` e ignora `price` en `MARKET`, tal como hace el alta.
+- El alta y el registro de la clave se confirman en la misma transacción. El bloqueo de cuenta serializa los reintentos concurrentes. La clave se registra únicamente con una orden confirmada. La demo conserva los registros hasta que se recrea su base.
 
 ## Cancelar una orden
 
