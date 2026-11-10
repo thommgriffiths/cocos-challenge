@@ -17,6 +17,7 @@ async function lockAccount(client: PoolClient, userId: number) {
       throw new AppError(
         "ACCOUNT_BUSY",
         "La cuenta está ocupada. Reintentá la solicitud.",
+        { cause: error },
       );
     }
     throw error;

@@ -27,11 +27,17 @@ La comparación de datos se limitó a los 11 movimientos de la cuenta de demo y 
 | HTTP | Código | Condición |
 | --- | --- | --- |
 | `400` | `INVALID_REQUEST` | Parámetros o cuerpo inválidos, incluido un monto que produce cero acciones o excede el rango de `size`. |
+| `404` | `ROUTE_NOT_FOUND` | La ruta o el método solicitado no corresponde a una operación de la API. |
 | `404` | `USER_NOT_FOUND`, `INSTRUMENT_NOT_FOUND`, `ORDER_NOT_FOUND` | El recurso no existe. Una orden que pertenece a otra cuenta también devuelve `ORDER_NOT_FOUND`. |
 | `409` | `ORDER_NOT_CANCELLABLE` | La orden pertenece a la cuenta y su estado difiere de `NEW`. |
 | `422` | `INSTRUMENT_NOT_TRADABLE`, `QUOTE_UNAVAILABLE` | El instrumento existe y queda fuera del catálogo, o una orden `MARKET` carece de cierre válido. |
 | `503` | `ACCOUNT_BUSY` | Se agotó la espera por el bloqueo de cuenta y se revirtió la transacción. |
+| `503` | `SCHEMA_NOT_READY`, `DATABASE_UNAVAILABLE` | La comprobación de disponibilidad detectó un esquema incompleto o no pudo consultar PostgreSQL. |
 | `500` | `DATA_INTEGRITY`, `INTERNAL_ERROR` | Los datos impiden un cálculo confiable o se produjo un fallo técnico. |
+
+Las respuestas `5xx` incluyen `X-Request-Id` para correlacionarlas con el registro del servidor. El registro incluye el método, el estado HTTP, el código de error y el SQLSTATE cuando PostgreSQL lo informa. Los cuerpos, parámetros y credenciales quedan fuera del registro.
+
+`GET /health` devuelve `200` con `{"status":"ok"}` cuando puede consultar las tablas y columnas necesarias del esquema público. La comprobación resuelve el esquema sin leer filas. Una base conectada y vacía devuelve `503` con `SCHEMA_NOT_READY` hasta que se cargue el esquema.
 
 ## Enviar una orden
 

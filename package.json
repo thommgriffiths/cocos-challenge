@@ -14,6 +14,7 @@
     "db:demo": "node --env-file-if-exists=.env scripts/init-demo.ts",
     "test": "node --env-file-if-exists=.env --test test/*.test.ts test/unit/*.test.ts",
     "test:unit": "node --test test/config.test.ts test/unit/*.test.ts",
+    "test:smoke": "node --env-file-if-exists=.env --test test/compiled-smoke.ts",
     "lint": "eslint .",
     "lint:openapi": "redocly lint docs/openapi.json",
     "typecheck": "tsc --noEmit",

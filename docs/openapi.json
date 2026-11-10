@@ -3,7 +3,7 @@
   "info": {
     "title": "Cocos Challenge Backend",
     "version": "0.1.0",
-    "description": "API local de evaluación en ARS. Los ejemplos de escritura parten de la demo recién cargada y son independientes. Un envío que devuelve 201 crea una fila, incluso con estado REJECTED. La cancelación cambia el estado de una orden y libera su reserva."
+    "description": "API local de evaluación en ARS. Los ejemplos de escritura parten de la demo recién cargada y son independientes. Un envío que devuelve 201 crea una fila, incluso con estado REJECTED. La cancelación cambia el estado de una orden y libera su reserva. Una ruta desconocida devuelve 404 con el código ROUTE_NOT_FOUND."
   },
   "servers": [
     {
@@ -30,10 +30,10 @@
         "operationId": "getHealth",
         "tags": ["Salud"],
         "summary": "Comprobar disponibilidad",
-        "description": "Comprueba que la aplicación pueda consultar PostgreSQL.",
+        "description": "Comprueba que PostgreSQL responda y que las tablas y columnas requeridas estén disponibles.",
         "responses": {
           "200": {
-            "description": "PostgreSQL responde.",
+            "description": "PostgreSQL y el esquema están listos.",
             "content": {
               "application/json": {
                 "schema": {
@@ -58,7 +58,12 @@
             }
           },
           "503": {
-            "description": "PostgreSQL no está disponible.",
+            "description": "PostgreSQL no está disponible o el esquema está incompleto.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -71,7 +76,7 @@
                       "properties": {
                         "code": {
                           "type": "string",
-                          "const": "DATABASE_UNAVAILABLE"
+                          "enum": ["DATABASE_UNAVAILABLE", "SCHEMA_NOT_READY"]
                         }
                       }
                     }
@@ -82,6 +87,12 @@
                     "value": {
                       "code": "DATABASE_UNAVAILABLE",
                       "message": "PostgreSQL no está disponible."
+                    }
+                  },
+                  "SCHEMA_NOT_READY": {
+                    "value": {
+                      "code": "SCHEMA_NOT_READY",
+                      "message": "El esquema de Cocos no está listo."
                     }
                   }
                 }
@@ -348,6 +359,11 @@
           },
           "500": {
             "description": "Falló el cálculo o la lectura del portfolio.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -600,6 +616,11 @@
           },
           "500": {
             "description": "Falló la lectura de recursos o la persistencia.",
+            "headers": {
+              "X-Request-Id": {
+                "$ref": "#/components/headers/RequestId"
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
@@ -820,6 +841,11 @@
     "responses": {
       "InternalError": {
         "description": "Falló la operación.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
         "content": {
           "application/json": {
             "schema": {
@@ -851,6 +877,11 @@
       },
       "AccountBusy": {
         "description": "Se agotó la espera por el bloqueo de cuenta y se revirtió la transacción.",
+        "headers": {
+          "X-Request-Id": {
+            "$ref": "#/components/headers/RequestId"
+          }
+        },
         "content": {
           "application/json": {
             "schema": {
@@ -1213,6 +1244,16 @@
         "type": "string",
         "description": "Sin caracteres nulos. El servidor recorta los espacios de los extremos y admite de 1 a 100 puntos de código Unicode.",
         "pattern": "^(?![\\s\\S]*\\u0000)\\s*\\S"
+      }
+    },
+    "headers": {
+      "RequestId": {
+        "description": "Identificador para correlacionar un error con el registro del servidor.",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
       }
     }
   }

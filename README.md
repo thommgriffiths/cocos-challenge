@@ -34,7 +34,7 @@ npm run build
 npm start
 ```
 
-En otra terminal, `curl -fsS http://127.0.0.1:3000/health` devuelve `{"status":"ok"}` cuando la API puede consultar PostgreSQL. La API escucha en `127.0.0.1`. `Ctrl+C` cierra el servidor y el pool.
+En otra terminal, `curl -fsS http://127.0.0.1:3000/health` devuelve `{"status":"ok"}` cuando PostgreSQL y el esquema están listos. La API escucha en `127.0.0.1`. `Ctrl+C` cierra el servidor y el pool.
 
 ## Documentación interactiva
 
@@ -83,6 +83,8 @@ npm run check
 `npm run check` verifica formato, lint y tipos, valida la especificación OpenAPI y sus ejemplos, compila y ejecuta los tests. GitHub Actions está configurado para ejecutar el mismo comando con un servicio PostgreSQL dedicado. Los tests pueden correr antes de `db:demo`. Cada suite de integración prepara el esquema y sus fixtures en una base temporal y la elimina al finalizar. `npm test` corre solo las pruebas.
 
 `npm run test:unit` ejecuta las pruebas de configuración y de reglas puras sin levantar PostgreSQL.
+
+En CI, `npm run test:smoke` también arranca el servidor compilado, comprueba el `503` sin esquema, carga la demo y verifica el `200` de salud y del portfolio. Para reproducirlo localmente, ejecutalo después de `npm run build` con `DEMO_DATABASE_URL` apuntando a una base de demo descartable y vacía y con `PORT` libre. El smoke deja la demo cargada y cierra el servidor.
 
 ## Decisiones y alcance
 

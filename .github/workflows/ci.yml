@@ -36,3 +36,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run test:smoke
+        env:
+          DEMO_DATABASE_URL: postgresql://cocos:cocos_local@127.0.0.1:55432/cocos_demo
