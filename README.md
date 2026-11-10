@@ -2,6 +2,21 @@
 
 API REST en Node.js, TypeScript, Express y PostgreSQL. Incluye portfolio, búsqueda de activos, envío y cancelación de órdenes. El [contrato de la API](docs/contract.md) reúne los formatos, los errores y las reglas contables.
 
+## Guía de evaluación
+
+1. Seguí el [arranque desde un clon](#arranque-desde-un-clon) para levantar PostgreSQL y cargar la demo local.
+2. Elegí un recorrido por cada carga de la demo. Abrí [Swagger UI](http://127.0.0.1:3000/docs) y seguí el [recorrido interactivo](#recorrido-en-swagger), o usá el [recorrido con REST Client](#recorrido-completo-con-rest-client), que incluye una orden a mercado y un rechazo persistido. Ambos usan el usuario `1`.
+3. Corré `npm run check` para verificar formato, lint, OpenAPI, tipos, build y tests. La sección de [datos y verificación](#datos-y-verificación) explica cómo reproducir también el smoke del servidor compilado.
+
+| Qué evaluar                                | Dónde se resuelve                                                                                                                   | Prueba representativa                                                                                                                               |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Portfolio, saldo disponible y rendimientos | [Valuación con un snapshot de PostgreSQL](src/portfolio/service.ts) y [reglas contables](docs/contract.md#portfolio).               | [Caja y posiciones](test/portfolio.test.ts#L76) y [consistencia ante una escritura concurrente](test/portfolio.test.ts#L238).                       |
+| Búsqueda por ticker o nombre               | [Coincidencia parcial literal, filtros combinables y paginación estable](src/instruments/search.ts).                                | [Combinación de filtros](test/instruments.test.ts#L51) y [paginación](test/instruments.test.ts#L137).                                               |
+| Alta de órdenes `MARKET` y `LIMIT`         | [Cantidad entera, centavos exactos y persistencia transaccional](src/orders/service.ts).                                            | [Ejecución y persistencia `MARKET`](test/orders.test.ts#L85) y [reserva `LIMIT` y rechazo](test/orders.test.ts#L152).                               |
+| Reservas, concurrencia y cancelación       | [Recursos de la cuenta](src/account-resources.ts) y [bloqueo compartido por alta y cancelación](src/orders/account-transaction.ts). | [Compras y ventas superpuestas](test/orders.test.ts#L438) y [liberación de la reserva una sola vez](test/orders.test.ts#L608).                      |
+| Reintentos del alta                        | [Clave opcional por cuenta y respuesta original en la misma transacción](docs/contract.md#reintentos-con-idempotencia).             | [Reintentos concurrentes](test/orders.test.ts#L463), [conflicto](test/orders.test.ts#L489) y [rollback de orden y clave](test/orders.test.ts#L360). |
+| Disponibilidad y contrato HTTP             | [`/health` comprueba el esquema](src/health.ts) y [OpenAPI describe las operaciones](docs/openapi.json).                            | [Smoke del binario compilado](test/compiled-smoke.ts) y [prueba HTTP de Swagger](test/openapi.test.ts).                                             |
+
 ## Arranque desde un clon
 
 Usá Node.js `24.21.0`, npm `11.19.0` y Docker, o Apple Container en macOS. Con nvm, `nvm install` y `nvm use` seleccionan la versión de `.nvmrc`. Desde la raíz del clon, instalá las dependencias del lockfile y copiá la configuración local de ejemplo.
@@ -36,21 +51,21 @@ npm start
 
 En otra terminal, `curl -fsS http://127.0.0.1:3000/health` devuelve `{"status":"ok"}` cuando PostgreSQL y el esquema están listos. La API escucha en `127.0.0.1`. `Ctrl+C` cierra el servidor y el pool.
 
-## Documentación interactiva
+## Recorrido en Swagger
 
 Con la API en ejecución, abrí [Swagger UI](http://127.0.0.1:3000/docs) para consultar los cinco endpoints. La [especificación OpenAPI](http://127.0.0.1:3000/openapi.json) se puede importar en un cliente HTTP. Si cambiaste `PORT`, usá el mismo puerto para la documentación y la API.
 
-Sobre una demo recién cargada, elegí **Try it out** y luego **Execute** en cada operación.
+Sobre una demo recién cargada, elegí **Try it out** y luego **Execute** en cada operación. Usá `userId` `1` en las rutas de cuenta.
 
 1. En `GET /instruments`, usá `ticker=pamp` y borrá el valor precargado de `name` para omitirlo. La respuesta `200` incluye PAMP (`id` 47).
-2. En `POST /users/{userId}/orders`, usá `userId` `1` y elegí el ejemplo **LIMIT por monto** (compra PAMP por monto `100.00` a precio `30.00`). La respuesta `201` incluye `status: NEW` y `size: 3`. Copiá el `id` devuelto.
-3. En `POST /users/{userId}/orders/{orderId}/cancel`, usá `userId` `1` y ese `id` como `orderId`. La respuesta `200` incluye `status: CANCELLED`.
+2. En `GET /users/{userId}/portfolio`, comprobá `availableCash` de `627500.00` y `totalValue` de `889756.00`.
+3. En `POST /users/{userId}/orders`, elegí **LIMIT por monto** y completá `Idempotency-Key` con una clave nueva, por ejemplo `guia-pamp-001`. La compra por `100.00` a `30.00` devuelve `201 NEW` por 3 acciones. Copiá el ID devuelto.
+4. Repetí el mismo envío con la misma clave. Debe devolver el mismo `201` e ID. Volvé al portfolio y comprobá que el disponible sea `627410.00`, con una sola reserva de `90.00`. Para probar un conflicto, cambiá `amount` a `"120.00"` y ejecutá el alta con la misma clave. La API devuelve `409 IDEMPOTENCY_CONFLICT`.
+5. En `POST /users/{userId}/orders/{orderId}/cancel`, usá el ID del paso 3. La respuesta es `200 CANCELLED`. Volvé a consultar el portfolio para confirmar que el disponible vuelve a `627500.00`.
 
-Los `POST` modifican la demo. Si vas a seguir el recorrido `.http` de abajo con sus IDs de ejemplo, reiniciá la base de demo primero.
+Si vas a seguir el recorrido `.http` de abajo con sus IDs de ejemplo, reiniciá la base de demo primero.
 
-Para probar un reintento, agregá una `Idempotency-Key` en Swagger al enviar la orden y repetí el mismo `POST` con esa clave. Vas a recibir el `201` con el mismo ID. Si cambiás la solicitud con esa misma clave, la API devuelve `409`. [Reglas de idempotencia](docs/contract.md#reintentos-con-idempotencia).
-
-## Recorrido de evaluación
+## Recorrido completo con REST Client
 
 Abrí [examples/demo.http](examples/demo.http) con un cliente `.http` como REST Client de VS Code. Ejecutá los bloques de arriba abajo, una vez sobre una demo recién cargada. La cuenta de ejemplo tiene id `1`. Si cambiaste `PORT` en `.env`, actualizá `@baseUrl` en el archivo de ejemplos.
 
@@ -82,7 +97,7 @@ Con PostgreSQL disponible, ejecutá los controles del proyecto.
 npm run check
 ```
 
-`npm run check` verifica formato, lint y tipos, valida la especificación OpenAPI y sus ejemplos, compila y ejecuta los tests. GitHub Actions está configurado para ejecutar el mismo comando con un servicio PostgreSQL dedicado. Los tests pueden correr antes de `db:demo`. Cada suite de integración prepara el esquema y sus fixtures en una base temporal y la elimina al finalizar. `npm test` corre solo las pruebas.
+`npm run check` verifica formato, lint y tipos, valida la especificación OpenAPI y sus ejemplos, compila y ejecuta los tests. El [workflow de GitHub Actions](.github/workflows/ci.yml) ejecuta el mismo comando con un servicio PostgreSQL dedicado. Los tests pueden correr antes de `db:demo`. Cada suite de integración prepara el esquema y sus fixtures en una base temporal y la elimina al finalizar. `npm test` corre solo las pruebas.
 
 `npm run test:unit` ejecuta las pruebas de configuración y de reglas puras sin levantar PostgreSQL.
 
