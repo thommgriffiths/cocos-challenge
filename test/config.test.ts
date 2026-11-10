@@ -5,8 +5,10 @@ import { requireLocalDatabaseUrl } from "../src/database.ts";
 
 const demoUrl = "postgresql://cocos:local@127.0.0.1:55432/cocos_demo";
 
-test("validates the port and explicit application database at startup", () => {
-  assert.equal(loadConfig({ DATABASE_URL: demoUrl }).port, 3000);
+test("validates startup configuration and keeps HTTP on loopback", () => {
+  const config = loadConfig({ DATABASE_URL: demoUrl, HOST: "0.0.0.0" });
+  assert.equal(config.host, "127.0.0.1");
+  assert.equal(config.port, 3000);
   assert.throws(
     () => loadConfig({ DATABASE_URL: demoUrl, PORT: "3000x" }),
     /PORT/,

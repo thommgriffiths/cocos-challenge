@@ -3,15 +3,18 @@ import { Client } from "pg";
 import {
   assertDatabase,
   databaseConfig,
+  demoDatabaseName,
   requireLocalDatabaseUrl,
 } from "../src/database.ts";
 
+// Serialize concurrent attempts to initialize the same demo database.
+const demoInitializationLockKey = 600_217;
+
 async function initializeDemo() {
-  const database = "cocos_demo";
   const url = requireLocalDatabaseUrl(
     process.env.DEMO_DATABASE_URL,
     "DEMO_DATABASE_URL",
-    database,
+    demoDatabaseName,
   );
   const [schema, seed] = await Promise.all([
     readFile(new URL("../db/schema.sql", import.meta.url), "utf8"),
@@ -21,10 +24,12 @@ async function initializeDemo() {
   const client = new Client(databaseConfig(url));
   try {
     await client.connect();
-    await assertDatabase(client, database);
+    await assertDatabase(client, demoDatabaseName);
     await client.query("BEGIN");
     try {
-      await client.query("SELECT pg_advisory_xact_lock(600217)");
+      await client.query("SELECT pg_advisory_xact_lock($1)", [
+        demoInitializationLockKey,
+      ]);
       const result = await client.query<{ hasRelations: boolean }>(`
         SELECT EXISTS (
           SELECT 1 FROM pg_catalog.pg_class AS relation

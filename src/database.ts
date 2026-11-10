@@ -1,5 +1,8 @@
 import type { Client, PoolConfig } from "pg";
 
+export const demoDatabaseName = "cocos_demo";
+const localDatabaseUser = "cocos";
+
 export function requireLocalDatabaseUrl(
   value: string | undefined,
   variable: string,
@@ -16,14 +19,14 @@ export function requireLocalDatabaseUrl(
     url.hostname !== "127.0.0.1" ||
     !url.port ||
     url.port === "0" ||
-    url.username !== "cocos" ||
+    url.username !== localDatabaseUser ||
     !url.password ||
     url.pathname !== `/${database}` ||
     url.search ||
     url.hash
   ) {
     throw new Error(
-      `${variable} debe apuntar a la base local ${database} con el usuario cocos y puerto explícito.`,
+      `${variable} debe apuntar a la base local ${database} con el usuario ${localDatabaseUser} y puerto explícito.`,
     );
   }
 
@@ -46,8 +49,8 @@ export function databaseConfig(url: URL): PoolConfig {
 
 export async function assertDatabase(client: Client, database: string) {
   const result = await client.query<{ matches: boolean }>(
-    "SELECT current_database() = $1 AND current_user = 'cocos' AS matches",
-    [database],
+    "SELECT current_database() = $1 AND current_user = $2 AS matches",
+    [database, localDatabaseUser],
   );
   if (!result.rows[0]?.matches) {
     throw new Error("PostgreSQL respondió con una base o usuario inesperados.");

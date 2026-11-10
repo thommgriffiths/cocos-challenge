@@ -6,7 +6,7 @@ import { loadConfig } from "./config.ts";
 import { databaseConfig } from "./database.ts";
 
 async function main() {
-  const { databaseUrl, port } = loadConfig(process.env);
+  const { databaseUrl, host, port } = loadConfig(process.env);
   const pool = new Pool(databaseConfig(databaseUrl));
   pool.on("error", () => {
     console.error("Se perdió una conexión inactiva con PostgreSQL.");
@@ -15,7 +15,7 @@ async function main() {
   const server = createServer(createApp(pool));
   try {
     await pool.query("SELECT 1");
-    server.listen(port, "127.0.0.1");
+    server.listen(port, host);
     await once(server, "listening");
   } catch {
     await pool.end();
@@ -38,7 +38,7 @@ async function main() {
 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
-  console.log(`API disponible en http://127.0.0.1:${port}`);
+  console.log(`API disponible en http://${host}:${port}`);
 }
 
 main().catch((error: Error) => {

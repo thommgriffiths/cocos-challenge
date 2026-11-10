@@ -1,4 +1,6 @@
-import { requireLocalDatabaseUrl } from "./database.ts";
+import { demoDatabaseName, requireLocalDatabaseUrl } from "./database.ts";
+
+const httpLoopbackHost = "127.0.0.1";
 
 export function loadConfig(env: NodeJS.ProcessEnv) {
   const rawPort = env.PORT ?? "3000";
@@ -8,11 +10,12 @@ export function loadConfig(env: NodeJS.ProcessEnv) {
   }
 
   return {
+    host: httpLoopbackHost,
     port,
     databaseUrl: requireLocalDatabaseUrl(
       env.DATABASE_URL,
       "DATABASE_URL",
-      "cocos_demo",
+      demoDatabaseName,
     ),
   };
 }
