@@ -70,7 +70,7 @@ Para repetir el recorrido desde cero, detené la API con `Ctrl+C` y ejecutá `do
 
 ## Datos y verificación
 
-`db/schema.sql` y `db/demo.sql` separan el esquema y las inserciones del `database.sql` provisto con el challenge. Conservan las definiciones, los valores y el orden de inserción. `db:demo` exige una base vacía. Un segundo intento sobre la base poblada devuelve un error y conserva los datos existentes.
+`db/schema.sql` y `db/demo.sql` separan el esquema y las inserciones del `database.sql` provisto con el challenge. Conservan las columnas, restricciones, valores y orden de inserción. El esquema agrega [dos índices medidos](docs/indexes.md). `db:demo` exige una base vacía. Un segundo intento sobre la base poblada devuelve un error y conserva los datos existentes.
 
 `DATABASE_URL` configura la API, `DEMO_DATABASE_URL` configura la carga de la demo y `TEST_DATABASE_URL` configura las pruebas. Las tres URLs de `.env.example` apuntan al contenedor local. Las pruebas usan `postgres` como base de mantenimiento para crear una base `cocos_test_*` por ejecución de integración. Los scripts validan el destino antes de ejecutar DDL.
 

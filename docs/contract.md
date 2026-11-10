@@ -4,7 +4,7 @@ La API expone el portfolio de una cuenta, la búsqueda de instrumentos y el env�
 
 ## Esquema de referencia
 
-El esquema local toma como referencia el SQL provisto con la consigna. La inspección de Neon en solo lectura confirmó que las cuatro tablas coinciden con el seed en columnas, tipos, precisión, nulabilidad, defaults y claves. Cada tabla tiene un índice único de clave primaria en `id`. Los ejemplos corresponden a una base local recién inicializada con los datos de demostración.
+El esquema local toma como referencia el SQL provisto con la consigna. La inspección de Neon en solo lectura confirmó que las cuatro tablas coinciden con el seed en columnas, tipos, precisión, nulabilidad, defaults y claves. En el esquema de referencia, cada tabla tiene un índice único de clave primaria en `id`. El esquema local agrega [dos índices para las consultas de cuenta y cotizaciones](indexes.md). Los ejemplos corresponden a una base local recién inicializada con los datos de demostración.
 
 | Tabla | Columnas relevantes del seed |
 | --- | --- |

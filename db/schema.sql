@@ -26,6 +26,8 @@ CREATE TABLE orders (
   FOREIGN KEY (userId) REFERENCES users(id)
 );
 
+CREATE INDEX orders_userid_datetime_id_idx ON orders (userid, datetime, id);
+
 CREATE TABLE marketdata (
   id SERIAL PRIMARY KEY,
   instrumentId INT,
@@ -37,3 +39,6 @@ CREATE TABLE marketdata (
   date DATE,
   FOREIGN KEY (instrumentId) REFERENCES instruments(id)
 );
+
+CREATE INDEX marketdata_instrumentid_date_id_idx
+  ON marketdata (instrumentid, date DESC NULLS LAST, id DESC);
