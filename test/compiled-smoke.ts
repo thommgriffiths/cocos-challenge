@@ -4,6 +4,7 @@ import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
 import { promisify } from "node:util";
+import openapi from "../docs/openapi.json" with { type: "json" };
 import { loadConfig } from "../src/config.ts";
 import { requireLocalDatabaseUrl } from "../src/database.ts";
 import { assertDocumentedResponse } from "./openapi.ts";
@@ -88,10 +89,11 @@ test(
       assertDocumentedResponse("get", "/health", ready);
 
       const portfolio = await getJson("/users/1/portfolio", 200);
-      assert.partialDeepStrictEqual(portfolio.body, {
-        userId: 1,
-        totalValue: "889756.00",
-      });
+      const expectedPortfolio =
+        openapi.paths["/users/{userId}/portfolio"].get.responses["200"].content[
+          "application/json"
+        ].examples.demo.value;
+      assert.deepEqual(portfolio.body, expectedPortfolio);
       assertDocumentedResponse("get", "/users/{userId}/portfolio", portfolio);
     } finally {
       lines.close();
